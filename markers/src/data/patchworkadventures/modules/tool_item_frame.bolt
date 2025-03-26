@@ -1,0 +1,66 @@
+#
+# Item frame tool
+#
+# The item frames placed with this tool have a tag. The tick function
+# will replace them with a marker.
+#
+
+# For wands and blocks, giving the tool is easy.
+#
+# Unfortunately, item modifiers can't set all the data we need on item
+# frames, so there we prepare the item on an armor stand and then
+# transfer it to the player.
+#
+# This approach is more powerful, maybe use it also for wand/block?
+#
+# args {tag:"mytag"}
+function pwa_markers:give_item_frame_tool:
+    $execute unless data storage pwa_markers:markers kv.$(tag) run function pwa_markers:zzzinternal/default_marker {tag:"$(tag)"}
+
+    # The generic way to give a player data-based items is to:
+    # - give the player a tagged placeholder item
+    # - make an armor_stand with the real item, populating it from data
+    # - execute an item replace from entity on the slot with the placeholder item
+    # - kill the armor stand
+
+    summon minecraft:armor_stand ~ ~ ~ {
+        Marker:1b,
+        Invisible:1b,
+        Tags:["pwa_utils_item_giver"],
+        HandItems:[
+            {
+                id:"minecraft:item_frame",
+                components: {
+                    custom_data: {
+                        pwa_markers_marker_tool:1b
+                    },
+                    entity_data: {
+                        id:"minecraft:item_frame",
+                        Tags:["pwa_markers_marker_tool_new"],
+                        Fixed:1b,
+                        # TODO: if we use the used.item_frame scoreboard objective
+                        # we could read this from the source player inventory, like for the others
+                        Item: {
+                            id: "minecraft:redstone_block", # anything
+                            count: 1,
+                            components: {
+                                custom_data: {
+                                    marker_data: {}
+                                }
+                            }
+                        }
+
+                    }
+                }
+            },
+            {}
+        ]
+    }
+
+    $data modify storage pwa_markers:temp new_marker_tool set from storage pwa_markers:markers kv.$(tag).marker_data
+    data modify storage pwa_markers:temp new_marker_tool.tool_type set value "item_frame"
+
+    execute as @e[type=minecraft:armor_stand, tag=pwa_utils_item_giver, limit=1] run function pwa_markers:zzzinternal/marker_tool_prepare_custom_name with storage pwa_markers:temp new_marker_tool
+    $data modify entity @e[type=minecraft:armor_stand, tag=pwa_utils_item_giver, limit=1] HandItems[0].components."minecraft:entity_data".Item.components.custom_data.marker_data set from storage pwa_markers:markers kv.$(tag).marker_data
+    function pwa_utils:give_player_new_item_from_item_giver
+    kill @e[type=minecraft:armor_stand, tag=pwa_utils_item_giver]

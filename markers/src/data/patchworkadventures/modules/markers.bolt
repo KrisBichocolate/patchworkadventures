@@ -1,0 +1,209 @@
+from mecha import AstCommand, AstChildren, AstRange
+from nbtlib import Float
+from dataclasses import dataclass, astuple
+from ./inventoryscan import apply_item_modifier_to_player
+
+# on players that see markers and may edit them
+editor_tag = 'pwa_markers_editor'
+editor_tag_temporary = 'pwa_markers_editor_temporary'
+
+predicate pwa_markers:marker_tool_held {
+    "condition": "minecraft:entity_properties",
+    "entity": "this",
+    "predicate": {
+        "equipment": {
+            "mainhand": {
+                "predicates": {
+                    "custom_data": "{pwa_markers_marker_tool:1b}"
+                }
+            }
+        }
+    }
+}
+
+#
+# Tick and load functions
+#
+
+function pwa_markers:zzzinternal/editor_tick:
+    # Skip if there are no active editors
+    execute unless entity @a[tag=editor_tag] run return 1
+    function pwa_markers:zzzinternal/editor_tick_internal
+
+function pwa_markers:zzzinternal/editor_tick_internal:
+    #
+    # Marker visibility
+    #
+
+    # First, tag all markers close to editors pwa_markers_marker_should_be_visible,
+    # then apply the state
+    execute as @a[tag=editor_tag] at @s:
+        # tag all nearby markers with pwa_markers_marker_should_be_visible
+        execute as @e[
+                type=minecraft:marker, tag=pwa_markers_marker,
+                distance=..32
+                ] at @s:
+            tag @s add pwa_markers_marker_should_be_visible
+    # make markers that are close visible
+    execute as @e[
+            type=minecraft:marker, tag=pwa_markers_marker,
+            tag=pwa_markers_marker_should_be_visible,
+            tag=!pwa_markers_marker_visible,
+            ] at @s:
+        tag @s add pwa_markers_marker_visible
+        function pwa_markers:zzzinternal/marker_create_display with entity @s data
+
+    # hide marker displays that are far away
+    execute as @e[
+            type=minecraft:marker, tag=pwa_markers_marker,
+            tag=pwa_markers_marker_visible,
+            tag=!pwa_markers_marker_should_be_visible
+            ] at @s:
+        tag @s remove pwa_markers_marker_visible
+        function pwa_markers:zzzinternal/kill_marker_display
+
+    # drop the should be visible tag from all
+    execute as @e[
+            type=minecraft:marker, tag=pwa_markers_marker,
+            tag=pwa_markers_marker_should_be_visible]:
+        tag @s remove pwa_markers_marker_should_be_visible
+
+    #
+    # Tool use
+    #
+
+    # Itemframes are conveniently placed with a tag, just replace them with a marker
+    execute as @e[type=minecraft:item_frame, tag=pwa_markers_marker_tool_new]
+        at @s
+        align xyz positioned ~0.5 ~0.5 ~0.5:
+            execute summon minecraft:marker:
+                data modify entity @s Tags set value ["pwa_markers_marker"]
+                data modify entity @s Tags append from entity
+                    @e[type=minecraft:item_frame, tag=pwa_markers_marker_tool_new, distance=..1, limit=1]
+                    Item.components."minecraft:custom_data".marker_data.tag
+                data modify entity @s data set from entity
+                    @e[type=minecraft:item_frame, tag=pwa_markers_marker_tool_new, distance=..1, limit=1]
+                    Item.components."minecraft:custom_data".marker_data
+            kill @s
+
+    # Check for tool use
+    execute as @a[tag=editor_tag, scores={pwa_markers_carrot_on_a_stick_used=1..}] at @s:
+        execute if predicate pwa_markers:marker_tool_wand_held
+            run function pwa_markers:zzzinternal/wand_tool/clicked
+        scoreboard players set @s pwa_markers_carrot_on_a_stick_used 0
+    execute as @a[tag=editor_tag, scores={pwa_markers_warped_fungus_on_a_stick_used=1..}] at @s:
+        execute if predicate pwa_markers:marker_tool_air_held
+            run function pwa_markers:zzzinternal/air_tool/clicked
+        scoreboard players set @s pwa_markers_warped_fungus_on_a_stick_used 0
+
+    # Detect when an editor plausibly mined a block that has an attached marker
+    scoreboard players set #had_markers_without_blocks pwa_markers_temp 0
+    execute
+        as @e[type=minecraft:marker, tag=pwa_markers_marker, tag=pwa_markers_marker_with_block]
+        at @s
+        if block ~ ~ ~ minecraft:air
+        run scoreboard players set #had_markers_without_blocks pwa_markers_temp 1
+    execute if score #had_markers_without_blocks pwa_markers_temp matches 1:
+        execute as @a[tag=editor_tag] at @s
+            run function pwa_markers:zzzinternal/marker_block_mined
+        # don't really know about this, but need to avoid coming here again every tick
+        execute
+            as @e[type=minecraft:marker, tag=pwa_markers_marker, tag=pwa_markers_marker_with_block]
+            at @s
+            if block ~ ~ ~ minecraft:air
+            run tag @s remove pwa_markers_marker_with_block
+
+append function_tag minecraft:tick {
+    "values": [ "pwa_markers:zzzinternal/editor_tick" ]
+}
+
+function pwa_markers:zzzinternal/interval30:
+    schedule function pwa_markers:zzzinternal/interval30 30 replace
+
+    # Check if one of the tools is held and if so, activate edit mode for as long
+    # as it is selected.
+    execute as @a[tag=!editor_tag] at @s if predicate pwa_markers:marker_tool_held:
+        function pwa_markers:begin_edit
+        tag @s add editor_tag_temporary
+    execute as @a[tag=editor_tag, tag=editor_tag_temporary] at @s unless predicate pwa_markers:marker_tool_held:
+        tag @s remove editor_tag_temporary
+        function pwa_markers:end_edit
+
+function pwa_markers:zzzinternal/load:
+    scoreboard objectives add pwa_markers_carrot_on_a_stick_used minecraft.used:minecraft.carrot_on_a_stick
+    scoreboard objectives add pwa_markers_warped_fungus_on_a_stick_used minecraft.used:minecraft.warped_fungus_on_a_stick
+    scoreboard objectives add pwa_markers_temp dummy
+    scoreboard objectives add pwa_markers_flags dummy
+
+    schedule function pwa_markers:zzzinternal/interval30 30 replace
+
+append function_tag minecraft:load {
+    "values": [ "pwa_markers:zzzinternal/load" ]
+}
+
+#
+# When the block around a pwa_markers_marker_with_block marker is mined
+# by an editor-flagged player, we remove the marker along with the block.
+#
+
+function pwa_markers:zzzinternal/marker_block_mined:
+    function pwa_utils:raycast_from_eyes {
+        hitCheckCallback:"pwa_markers:zzzinternal/marker_block_removal_check",
+        increment:"0.1",
+        max:"70",
+        custom:{}
+    }
+
+function pwa_markers:zzzinternal/marker_block_removal_check:
+    execute align xyz positioned ~0.5 ~0.5 ~0.5
+        as @e[type=minecraft:marker, tag=pwa_markers_marker, tag=pwa_markers_marker_with_block, distance=..0.1]
+        if block ~ ~ ~ minecraft:air:
+            kill @s
+            function pwa_markers:zzzinternal/kill_marker_display
+            function pwa_utils:raycast_finish
+
+
+#
+# Helpers for giving tools to the player
+#
+
+# For wand/block only
+apply_item_modifier_to_player("pwa_markers:zzzinternal/marker_tool_prepare", {
+    function: "filtered",
+    item_filter: {
+        predicates: {
+            custom_data: "{pwa_markers_new_marker_tool:1b}"
+        }
+    },
+    modifier: [
+        {
+            function: "copy_custom_data",
+            source: {
+                type: "storage",
+                source: "pwa_markers:temp"
+            },
+            ops: [
+                {
+                    op: "replace",
+                    source: "new_marker_tool",
+                    target: "marker_data"
+                },
+                {
+                    op: "replace",
+                    source: "zero",
+                    target: "pwa_markers_new_marker_tool"
+                }
+            ]
+        },
+        {
+            function: "copy_name",
+            source: "this"
+        }
+    ]
+})
+
+function pwa_markers:zzzinternal/marker_tool_prepare_custom_name:
+    $data modify entity @s HandItems[0].components.custom_name set value '{"text":"marker $(tag) ($(tool_type) tool)"}'
+
+function pwa_markers:zzzinternal/marker_tool_prepare_make_name_entity:
+    $summon minecraft:marker ~ ~ ~ {Tags:["pwa_markers_name_entity"],CustomName:'{"text":"marker $(tag) ($(tool_type) tool)"}'}

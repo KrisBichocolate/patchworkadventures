@@ -1,0 +1,52 @@
+#
+# Based on vdvman1's raycast template
+#
+# Use raycast_direct or raycast_from_eyes to start a ray.
+# The callback calls raycast_finish to stop the ray.
+#
+function pwa_utils:raycast_finish:
+    scoreboard players set #hit pwa_utils_raycast 1
+
+function pwa_utils:zzzinternal/raycast_step:
+    $function $(hitCheckCallback) $(custom)
+    scoreboard players add #distance pwa_utils_raycast 1
+    $execute if score #hit pwa_utils_raycast matches 0 if score #distance pwa_utils_raycast matches ..$(max) positioned ^ ^ ^$(increment) run function pwa_utils:zzzinternal/raycast_step {hitCheckCallback:"$(hitCheckCallback)",increment:"$(increment)",max:"$(max)",custom:$(custom)}
+
+function pwa_utils:raycast_direct:
+    tag @s add pwa_utils_raycast_source
+    scoreboard objectives add pwa_utils_raycast dummy
+    scoreboard players set #hit pwa_utils_raycast 0
+    scoreboard players set #distance pwa_utils_raycast 0
+    $function pwa_utils:zzzinternal/raycast_step {hitCheckCallback:"$(hitCheckCallback)",increment:"$(increment)",max:"$(max)",custom:$(custom)}
+    tag @s remove pwa_utils_raycast_source
+
+function pwa_utils:raycast_from_eyes:
+    $execute as @s anchored eyes positioned ^ ^ ^ anchored feet run function pwa_utils:raycast_direct {hitCheckCallback:"$(hitCheckCallback)",increment:"$(increment)",max:"$(max)",custom:$(custom)}
+
+
+# Generating raycast functions. I also tried bolt macros but couldn't make it work.
+# Using vanilla macros worked above.
+#
+# def raycast(name, blockType, onHit):
+#     function f'patchworkadventures:rc_{name}_hit':
+#         scoreboard players set #hit pwa_utils_raycast 1
+#         function onHit
+
+#     function f'patchworkadventures:rc_{name}_step':
+#         execute unless block ~ ~ ~ blockType
+#             run function f'patchworkadventures:rc_{name}_hit'
+#         scoreboard players add #distance pwa_utils_raycast 1
+#         execute
+#             if score #hit pwa_utils_raycast matches 0
+#             if score #distance pwa_utils_raycast matches ..80
+#             positioned ^ ^ ^0.1
+#             run function f'patchworkadventures:rc_{name}_step'
+
+#     function f'patchworkadventures:rc_{name}':
+#         tag @s add pwa_utils_raycast_source
+#         scoreboard players set #hit pwa_utils_raycast 0
+#         scoreboard players set #distance pwa_utils_raycast 0
+#         function f'patchworkadventures:rc_{name}_step'
+#         tag @s remove pwa_utils_raycast_source
+
+# raycast('test_area_wand', 'minecraft:air', 'patchworkadventures:test_area_wand_hit')

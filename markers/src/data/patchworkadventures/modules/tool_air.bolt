@@ -1,0 +1,58 @@
+#
+# Wand tool
+#
+# This tool works by watching the carrot_on_a_stick usage scoreboard.
+# On use, we raycast to the looked-at block and place a marker inside.
+
+# Need to check if the warped_fungus_on_a_stick used was one of our tools.
+predicate pwa_markers:marker_tool_air_held {
+    "condition": "minecraft:entity_properties",
+    "entity": "this",
+    "predicate": {
+        "equipment": {
+            "mainhand": {
+                "items": ["minecraft:warped_fungus_on_a_stick"],
+                "predicates": {
+                    "custom_data": "{pwa_markers_marker_tool:1b}"
+                }
+            }
+        }
+    }
+}
+
+function pwa_markers:zzzinternal/air_tool/clicked:
+    execute anchored eyes positioned ^ ^ ^:
+        summon minecraft:marker ~ ~ ~
+        data modify entity @e[type=minecraft:marker, distance=..0.1, limit=1] Tags
+            set value ["pwa_markers_marker", "pwa_markers_with_rotation"]
+        data modify entity @e[type=minecraft:marker, distance=..0.1, limit=1] Tags
+            append from entity @s SelectedItem.components."minecraft:custom_data".marker_data.tag
+        data modify entity @e[type=minecraft:marker, distance=..0.1, limit=1] data
+            set from entity @s SelectedItem.components."minecraft:custom_data".marker_data
+        data modify entity @e[type=minecraft:marker, distance=..0.1, limit=1] Rotation
+            set from entity @s Rotation
+
+# For wands and blocks, tool data is set up from data storage
+# by applying a conditional item modifier to all slots of the player
+# inventory.
+#
+# args {tag:"mytag"}
+function pwa_markers:give_air_tool:
+    $execute unless data storage pwa_markers:markers kv.$(tag) run function pwa_markers:zzzinternal/default_marker {tag:"$(tag)"}
+    $data modify storage pwa_markers:temp new_marker_tool set from storage pwa_markers:markers kv.$(tag).marker_data
+    data modify storage pwa_markers:temp new_marker_tool.tool_type set value "air"
+
+    give @s minecraft:warped_fungus_on_a_stick[
+        custom_data={
+            pwa_markers_marker_tool:1b,
+            pwa_markers_new_marker_tool:1b,
+            marker_data:{}
+        },
+        custom_name='{"color":"aqua","text":"<uninitialized>"}'
+    ] 1
+    data modify storage pwa_markers:temp zero set value 0
+    function pwa_markers:zzzinternal/marker_tool_prepare_make_name_entity with storage pwa_markers:temp new_marker_tool
+    execute as @e[type=minecraft:marker, tag=pwa_markers_name_entity]
+        run function pwa_markers:zzzinternal/marker_tool_prepare
+    data remove storage pwa_markers:temp new_marker_tool
+    kill @e[type=minecraft:marker, tag=pwa_markers_name_entity]

@@ -1,0 +1,14 @@
+{
+    "name": "Patchwork Adventures: Effects",
+    "author": "Kris Bichocolate",
+    "description": "Generating effects code from simple descriptions",
+    "require": ["bolt"],
+    "data_pack": {
+        "load": ["src"]
+    },
+    "pipeline": ["mecha"],
+    "meta": {
+        "bolt": {"entrypoint": ["patchworkadventures:*"]}
+    },
+    "output": "build"
+}

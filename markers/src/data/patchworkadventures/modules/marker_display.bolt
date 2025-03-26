@@ -1,0 +1,97 @@
+from ./markers import editor_tag
+
+#
+# Dealing with marker displays
+#
+# When edit mode is on, display and interaction entities are generated.
+#
+
+function pwa_markers:zzzinternal/marker_create_display:
+    summon minecraft:block_display ~ ~ ~
+        {
+            Glowing:1b,
+            brightness: {block: 15, sky: 15},
+            glow_color_override: 0,
+            Tags:["pwa_markers_marker_display"],
+            block_state:{Name:"glass",Properties:{}},
+            transformation:{
+                scale:[0.5f,0.5f,0.5f],
+                translation:[-0.25f,-0.25f,-0.25f],
+                left_rotation:[0f,0f,0f,1f],
+                right_rotation:[0f,0f,0f,1f]
+            }
+        }
+    function pwa_markers:zzzinternal/marker_create_display_from_marker_data with entity @s data
+
+    # TODO: pwa_markers_with_rotation should also display their rotation in edit mode!
+
+    summon minecraft:text_display ~ ~0.35 ~
+        {
+            brightness: {block: 15, sky: 15},
+            see_through: 1b,
+            billboard:"vertical",
+            alignment:"center",
+            Tags:["pwa_markers_marker_display"],
+        }
+    data modify entity @e[type=minecraft:text_display, distance=..0.5, limit=1]
+        text set from entity @s data.tag
+
+    summon minecraft:interaction ~ ~-0.25 ~
+        {
+            width: 0.5f,
+            height: 0.5f,
+            Tags:["pwa_markers_marker_display_interaction", "pwa_markers_marker_display"],
+        }
+
+function pwa_markers:zzzinternal/marker_create_display_from_marker_data:
+    $data modify entity @e[type=minecraft:block_display, tag=pwa_markers_marker_display, distance=..0.1, limit=1] glow_color_override set from storage pwa_markers:markers kv.$(tag).glow_color
+    $data modify entity @e[type=minecraft:block_display, tag=pwa_markers_marker_display, distance=..0.1, limit=1] block_state.Name set from storage pwa_markers:markers kv.$(tag).vis_block
+
+function pwa_markers:zzzinternal/kill_marker_display:
+    kill @e[
+        tag=pwa_markers_marker_display,
+        distance=..0.5
+    ]
+
+advancement pwa_markers:marker_display_left_click {
+    "criteria": {
+        "requirement": {
+            "trigger": "minecraft:player_hurt_entity",
+            "conditions": {
+                "entity": {
+                    "type": "interaction",
+                    "nbt": "{Tags:[\"pwa_markers_marker_display_interaction\"]}"
+                }
+            }
+        }
+    },
+    "rewards": {
+        "function": "pwa_markers:zzzinternal/marker_display_left_click"
+    }
+}
+
+function pwa_markers:zzzinternal/marker_display_left_click:
+    advancement revoke @s only pwa_markers:marker_display_left_click
+    execute if entity @s[tag=!editor_tag] run return fail
+
+    # find what interaction was clicked
+    tag @s add pwa_markers_marker_display_clicker
+    execute as @e[type=minecraft:interaction, tag=pwa_markers_marker_display_interaction, distance=..6] at @s positioned ^ ^0.25 ^:
+        # Find the interaction that was clicked.
+        # Need to workaround the fact that "execute on attacker" will abort if there is none
+        scoreboard players set #attacked pwa_markers_temp 0
+        execute on attacker if entity @s[tag=pwa_markers_marker_display_clicker]
+            run scoreboard players set #attacked pwa_markers_temp 1
+        execute if score #attacked pwa_markers_temp matches 0
+            run return 1
+
+        data remove entity @s attack
+
+        kill @e[
+            type=minecraft:marker,
+            tag=pwa_markers_marker,
+            limit=1,
+            distance=..0.3
+        ]
+        function pwa_markers:zzzinternal/kill_marker_display # includes self
+    tag @s remove pwa_markers_marker_display_clicker

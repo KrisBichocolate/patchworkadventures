@@ -1,0 +1,104 @@
+
+obj_bs = "patchworkadventures_block_scan"
+
+function pwa_utils:block_scan_start:
+    scoreboard objectives add patchworkadventures_block_scan dummy
+
+    # Guard against calls while still running
+    execute if score #is_running obj_bs matches 1 run say "Block scan already running"
+    execute if score #is_running obj_bs matches 1 run return fail
+    scoreboard players set #is_running obj_bs 1
+
+    # Remember the caller
+    scoreboard objectives remove patchworkadventures_block_scan_caller
+    scoreboard objectives add patchworkadventures_block_scan_caller dummy
+    scoreboard players set @s patchworkadventures_block_scan_caller 1
+
+    $data modify storage patchworkadventures:temp block_scan_callback set value "$(callback)"
+    $scoreboard players set #start_x patchworkadventures_block_scan $(start_x)
+    $scoreboard players set #start_y patchworkadventures_block_scan $(start_y)
+    $scoreboard players set #start_z patchworkadventures_block_scan $(start_z)
+    $scoreboard players set #end_x patchworkadventures_block_scan $(end_x)
+    $scoreboard players set #end_y patchworkadventures_block_scan $(end_y)
+    $scoreboard players set #end_z patchworkadventures_block_scan $(end_z)
+    $scoreboard players set #it_per_tick patchworkadventures_block_scan $(it_per_tick)
+
+    $scoreboard players set #current_x patchworkadventures_block_scan $(start_x)
+    $scoreboard players set #current_y patchworkadventures_block_scan $(start_y)
+    $scoreboard players set #current_z patchworkadventures_block_scan $(start_z)
+
+    scoreboard players set #current_it obj_bs 0
+    scoreboard players set #progress_announce_every obj_bs 1000
+
+    scoreboard players operation #dx obj_bs = #end_x obj_bs
+    scoreboard players add #dx obj_bs 1
+    scoreboard players operation #dx obj_bs -= #start_x obj_bs
+
+    scoreboard players operation #dy obj_bs = #end_y obj_bs
+    scoreboard players add #dy obj_bs 1
+    scoreboard players operation #dy obj_bs -= #start_y obj_bs
+
+    scoreboard players operation #dz obj_bs = #end_z obj_bs
+    scoreboard players add #dz obj_bs 1
+    scoreboard players operation #dz obj_bs -= #start_z obj_bs
+
+    scoreboard players operation #total_it obj_bs = #dx obj_bs
+    scoreboard players operation #total_it obj_bs *= #dy obj_bs
+    scoreboard players operation #total_it obj_bs *= #dz obj_bs
+
+    # Note: a marker does not work for whatever reason
+    execute unless entity @e[type=minecraft:armor_stand, tag=patchworkadventures_block_scan_pointer]
+        run summon minecraft:armor_stand ~ ~ ~ {Tags:["patchworkadventures_block_scan_pointer"],Invisible:1b,Marker:1b,NoGravity:1b}
+
+function _pwa_utils:block_scan_tick:
+    execute if score #is_running obj_bs matches 1 run function _pwa_utils:block_scan_tick_inner
+
+function _pwa_utils:block_scan_tick_inner:
+    scoreboard players set #current_tick_it obj_bs 0
+    function _pwa_utils:block_scan_tick_loop
+    execute if score #current_it obj_bs >= #total_it obj_bs:
+        scoreboard players set #is_running obj_bs 0
+        say Done block scan
+
+function _pwa_utils:block_scan_tick_loop:
+    # Call the user action
+    execute as @e[type=minecraft:armor_stand, tag=patchworkadventures_block_scan_pointer, limit=1] at @s:
+        execute store result entity @s Pos[0] double 1 run scoreboard players get #current_x obj_bs
+        execute store result entity @s Pos[1] double 1 run scoreboard players get #current_y obj_bs
+        execute store result entity @s Pos[2] double 1 run scoreboard players get #current_z obj_bs
+        function _pwa_utils:block_scan_action with storage patchworkadventures:temp
+
+    # Bump it number
+    scoreboard players add #current_it obj_bs 1
+    scoreboard players add #current_tick_it obj_bs 1
+
+    # Regularly report progress
+    scoreboard players operation #progress obj_bs = #current_it obj_bs
+    scoreboard players operation #progress obj_bs %= #progress_announce_every obj_bs
+    execute if score #progress obj_bs matches 0
+        run tellraw @a[scores={patchworkadventures_block_scan_caller=1}] [
+            {"text":"Processed "},
+            {"score":{"name":"#current_it","objective":"patchworkadventures_block_scan"}},
+            {"text":" of "},
+            {"score":{"name":"#total_it","objective":"patchworkadventures_block_scan"}},
+        ]
+
+    # Update current coordinates for next iteration
+    scoreboard players add #current_x obj_bs 1
+    execute if score #current_x obj_bs > #end_x obj_bs:
+        scoreboard players operation #current_x obj_bs = #start_x obj_bs
+        scoreboard players add #current_y obj_bs 1
+    execute if score #current_y obj_bs > #end_y obj_bs:
+        scoreboard players operation #current_y obj_bs = #start_y obj_bs
+        scoreboard players add #current_z obj_bs 1
+
+    # Exit or recurse
+    execute if score #current_it obj_bs >= #total_it obj_bs run return 1
+    execute if score #current_tick_it obj_bs < #it_per_tick obj_bs run function _pwa_utils:block_scan_tick_loop
+
+function _pwa_utils:block_scan_action:
+    $function $(block_scan_callback)
+
+append function_tag minecraft:tick {
+    "values": [ "_pwa_utils:block_scan_tick" ]
+}

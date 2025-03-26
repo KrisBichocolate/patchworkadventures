@@ -1,0 +1,21 @@
+# Applies an item modifier to all inventory slots of a player
+def apply_item_modifier_to_player(name, modifier):
+    function name:
+        for slot in range(36):
+            item modify entity @p f'container.{slot}' modifier
+        # TODO: also armor slots?
+
+# Transfers the mainhand item from the pwa_utils_item_giver-tagged armorstand
+# to an empty item slot in @p. If @p has no empty slot it doesn't get the item.
+#
+# Useful to create a complex item on an armor stand before transfering to a
+# player - because one can't edit player data directly.
+function pwa_utils:give_player_new_item_from_item_giver:
+    placeholder_item = 'minecraft:barrier[custom_data={pwa_utils_placeholder_item:1b}]'
+    give @p placeholder_item 1
+    for slot in range(36):
+        execute
+            if items entity @p f'container.{slot}' placeholder_item
+            run item replace entity @p f'container.{slot}'
+                from entity @e[type=minecraft:armor_stand, tag=pwa_utils_item_giver, limit=1]
+                weapon.mainhand

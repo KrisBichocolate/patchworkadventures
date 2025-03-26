@@ -1,0 +1,131 @@
+#
+# Creating a chat-based admin menu
+#
+
+# Entrypoint for the menu
+function pwa_markers:menu:
+    tellraw @s [
+        {
+            "text":"[Start Edit Mode]",
+            "color":"dark_green",
+            "clickEvent":{
+                "action":"run_command",
+                "value":"/function pwa_markers:begin_edit"
+            }
+        },
+        { "text":" " },
+        {
+            "text":"[End Edit Mode]",
+            "color":"dark_red",
+            "clickEvent":{
+                "action":"run_command",
+                "value":"/function pwa_markers:end_edit"
+            }
+        },
+        {
+            "text":"\nMarkers:",
+            "color": "white",
+        }
+    ]
+
+    function pwa_markers:zzzinternal/menu_per_marker_iter {n: 0}
+
+    tellraw @s [
+        { "text":"  - " },
+        {
+            "text":"[New Marker Tag]",
+            "color":"dark_green",
+            "clickEvent":{
+                "action":"suggest_command",
+                "value":"/function pwa_markers:set_marker_info {tag:\"<tag>\", vis_block:\"minecraft:glass\", glow_color: \"purple\"}"
+            }
+        },
+    ]
+
+# Iterate over all keys in pwa_markers:markers.keys,
+# calling pwa_markers:zzzinternal/menu_per_marker_key for each
+#
+# args: {n: <int>}
+function pwa_markers:zzzinternal/menu_per_marker_iter:
+    $scoreboard players set #current pwa_markers_temp $(n)
+    execute store result score #count pwa_markers_temp run data get storage pwa_markers:markers keys
+    execute if score #current pwa_markers_temp >= #count pwa_markers_temp run return 1
+
+    $data modify storage pwa_markers:temp key set from storage pwa_markers:markers keys[$(n)]
+    function pwa_markers:zzzinternal/menu_per_marker_key with storage pwa_markers:temp
+
+    scoreboard players add #current pwa_markers_temp 1
+    execute store result storage pwa_markers:temp n int 1 run scoreboard players get #current pwa_markers_temp
+    function pwa_markers:zzzinternal/menu_per_marker_iter with storage pwa_markers:temp
+
+# args: {key: <string>}
+function pwa_markers:zzzinternal/menu_per_marker_key:
+    $function pwa_markers:zzzinternal/menu_per_marker_kv with storage pwa_markers:markers kv.$(key)
+
+# Emit a message to the calling user with options for the passed marker
+# args: {...marker data from storage...}
+function pwa_markers:zzzinternal/menu_per_marker_kv:
+    x = '''$tellraw @s [
+            { "text":"  - $(tag): " },
+            {
+                "text":"[Tools]",
+                "color":"dark_green",
+                "clickEvent":{
+                    "action":"run_command",
+                    "value":"/function pwa_markers:zzzinternal/menu_give_tools {tag:\\"$(tag)\\"}"
+                }
+            },
+            { "text":" " },
+            {
+                "text":"[Change Visual]",
+                "color":"dark_green",
+                "clickEvent":{
+                    "action":"suggest_command",
+                    "value":"/function pwa_markers:set_marker_info {tag:\\"$(tag)\\", vis_block:\\"$(vis_block)\\", glow_color:\\"$(glow_color)\\"}"
+                }
+            }
+        ]'''.replace("\n", "")
+    raw (x)
+
+# Emit a message menu that can give tools for the marker tag to the user
+# args: {tag: <string>}
+function pwa_markers:zzzinternal/menu_give_tools:
+    x = '''$tellraw @s [
+            { "text":"Marker $(tag) tools: " },
+            {
+                "text":"[Item Frame]",
+                "color":"dark_green",
+                "clickEvent":{
+                    "action":"run_command",
+                    "value":"/function pwa_markers:give_item_frame_tool {tag:\\"$(tag)\\"}"
+                }
+            },
+            { "text":" " },
+            {
+                "text":"[Wand]",
+                "color":"dark_green",
+                "clickEvent":{
+                    "action":"run_command",
+                    "value":"/function pwa_markers:give_wand_tool {tag:\\"$(tag)\\"}"
+                }
+            },
+            { "text":" " },
+            {
+                "text":"[Air]",
+                "color":"dark_green",
+                "clickEvent":{
+                    "action":"run_command",
+                    "value":"/function pwa_markers:give_air_tool {tag:\\"$(tag)\\"}"
+                }
+            },
+            { "text":" " },
+            {
+                "text":"[Block]",
+                "color":"dark_green",
+                "clickEvent":{
+                    "action":"suggest_command",
+                    "value":"/function pwa_markers:give_block_tool {tag:\\"$(tag)\\", block:\\"stone\\"}"
+                }
+            }
+        ]'''.replace("\n", "")
+    raw (x)

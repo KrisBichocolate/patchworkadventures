@@ -1,0 +1,590 @@
+from mecha import Mecha, AstVector3, AstCommand, AstChildren, AstRange, AstSelector, SelectorParser
+from tokenstream import TokenStream
+from nbtlib import Float
+from dataclasses import dataclass, astuple
+from ./inventoryscan import apply_item_modifier_to_player
+import re
+
+# Mecha parsing helpers
+mecha = Mecha()
+
+def parse_selector(text):
+    return mecha.parse(text, type=AstSelector)
+
+def parse_vec3(text):
+    # yikes, but... why not?
+    AstVector3.parser = "vec3"
+    return mecha.parse(text, type=AstVector3)
+
+# For an effect-kind, what fields does it have that can contain subeffects?
+def effect_field_names(kind):
+    known = {
+        "sequential": ["sequential"],
+        "parallel": ["parallel"],
+        "check_condition": ["onTrue", "onFalse"],
+        "for_each": ["effect"],
+        "for_random_selection": ["onSelected", "onNotSelected"],
+    }
+    return known.get(kind, [])
+
+
+# Effect-kinds that, on their own, may not be over when their main function returns
+#
+# Note that all parents of an async effect will be tagged is_async because they
+# will need to deal with their async child effect.
+async_effects = ["wait"]
+
+# Returns a list of effects at the field, empty list if field does not exist
+def get_effects_field(trigger, name):
+    if name not in trigger:
+        return []
+    entry = trigger[name]
+    if isinstance(entry, dict):
+        return [entry]
+    if isinstance(entry, list):
+        return entry
+    raise Exception(f"field {name} on trigger {trigger.id} must be an object or a list")
+
+# Conditions are usually unnamed, so their generated names contain a unique index
+global_condition_function_index = 0
+
+# Emits the function checking a condition (returning 1 or fail(0))
+# as well as the functions for all subconditions.
+def emit_condition_function_recursive(condition):
+    global global_condition_function_index
+
+    condition_function_index = global_condition_function_index
+    global_condition_function_index += 1
+
+    fnname = f'pwa_effects:zzzinternal/condition/c{condition_function_index}'
+    condition["fnname"] = fnname
+
+    if "condition" in condition:
+        emit_condition_function_recursive(condition.condition)
+
+    function fnname:
+        if condition.kind == "player_nearby":
+            execute if entity @a[distance=f'..{condition.distance}']
+                run return 1
+            return fail
+
+        elif condition.kind == "is_block":
+            coords = parse_vec3(condition.get("coords", "~ ~ ~"))
+            execute if block coords condition.block
+                run return 1
+            return fail
+
+        elif condition.kind == "all":
+            total_count = f'#condition_{condition_function_index}_total_count'
+            true_count = f'#condition_{condition_function_index}_true_count'
+            scoreboard players set total_count pwa_effects_temp 0
+            scoreboard players set true_count pwa_effects_temp 0
+            execute as @e[type=minecraft:marker, tag=condition.at] at @s:
+                scoreboard players add total_count pwa_effects_temp 1
+                execute if function condition.condition.fnname:
+                    scoreboard players add true_count pwa_effects_temp 1
+            execute if score total_count pwa_effects_temp = true_count pwa_effects_temp
+                run return 1
+            return fail
+
+        elif condition.kind == "any":
+            execute as @e[type=minecraft:marker, tag=condition.at] at @s
+                if function condition.condition.fnname
+                run return 1
+            return fail
+
+        elif condition.kind == "random":
+            trueAmount, total = map(int, re.match(r'(\d*) in (\d*)', condition.chance).groups())
+            execute store result score #rng pwa_effects_temp run random value AstRange(min=1, max=total)
+            execute if score #rng pwa_effects_temp matches AstRange(min=1, max=trueAmount)
+                run return 1
+            return fail
+
+
+        elif condition.kind == "hit_by_arrow":
+            scoreboard players set #wasHit pwa_effects_temp 0
+            execute as @e[type=minecraft:arrow, nbt={inGround:1b}, distance=..0.65, tag=!pwa_effects_arrow_hit, limit=1]:
+                tag @s add pwa_effects_arrow_hit
+                scoreboard players add #wasHit pwa_effects_temp 1
+            execute if score #wasHit pwa_effects_temp matches 1..
+                run return 1
+            return fail
+
+        else:
+            raise Exception(f"unsupported condition kind: {condition.kind}")
+    return fnname
+
+# Emits code for a trigger that runs at an entity.
+#
+# These are usually the ones where a condition is checked forEach marker with a tag
+def trigger_at_entity(trigger):
+    def run_effect(name):
+        if name in trigger:
+            function trigger[name].fnname
+
+    # TODO: consider using scoreboards here, similar to is_running!
+    tag_is_true = f'pwa_effects_trigger_{trigger.id}_is_true'
+    tag_was_true = f'pwa_effects_trigger_{trigger.id}_was_true'
+
+    tag @s remove tag_is_true
+    execute if function trigger.condition.fnname:
+        tag @s add tag_is_true
+        execute if entity @s[tag=!tag_was_true]:
+            tag @s add tag_was_true
+            run_effect("onTrue")
+        run_effect("whileTrue")
+    execute if entity @s[tag=!tag_is_true]:
+        execute if entity @s[tag=tag_was_true]:
+            tag @s remove tag_was_true
+            run_effect("onFalse")
+        run_effect("whileFalse")
+
+# Emits code for a trigger that runs without an entity
+def trigger_global_scoreboard(trigger):
+    def run_effect(name):
+        if name in trigger:
+            function trigger[name].fnname
+
+    tag_is_true = f'#{trigger.id}_is_true'
+    tag_was_true = f'#{trigger.id}_was_true'
+
+    scoreboard players set tag_is_true pwa_effects_global_trigger_status 0
+    execute if function trigger.condition.fnname:
+        scoreboard players set tag_is_true pwa_effects_global_trigger_status 1
+        execute unless score tag_was_true pwa_effects_global_trigger_status matches 1:
+            scoreboard players set tag_was_true pwa_effects_global_trigger_status 1
+            run_effect("onTrue")
+        run_effect("whileTrue")
+    execute if score tag_is_true pwa_effects_global_trigger_status matches 0:
+        execute if score tag_was_true pwa_effects_global_trigger_status matches 1:
+            scoreboard players set tag_was_true pwa_effects_global_trigger_status 0
+            run_effect("onFalse")
+        run_effect("whileFalse")
+
+# Emits a function for processing a trigger, to be used in the tick function
+def emit_trigger_function(trigger):
+    trigger["fnname"] = f'pwa_effects:zzzinternal/trigger/{trigger.id}'
+    function trigger.fnname:
+        execute if score trigger.id pwa_effects_trigger_is_deactivated matches 1
+            run return 1
+        if "forEach" in trigger:
+            execute as @e[type=minecraft:marker, tag=trigger.forEach] at @s:
+                trigger_at_entity(trigger)
+        else:
+            trigger_global_scoreboard(trigger)
+
+# Emits all functions needed for an effect
+#
+# This is the effect.fnname that runs the effect, as well as any needed
+# internal continuation functions if the effect is_async
+def emit_effect_functions(effect):
+    def fnname(cont_count):
+        if cont_count == -1:
+            return effect.fnname
+        else:
+            return f'pwa_effects:zzzinternal/effect/{effect.id}_continue{cont_count}'
+
+    # Set up callback to be triggered once duration has passed
+    def start_timer(duration, callback):
+        if duration.endswith('s'):
+            timer_scoreboard = "pwa_effects_seconds_timer"
+            timer_tag = "pwa_effects_seconds_timer"
+            timer_list = "data.pwa_effects_seconds_timers"
+            duration = duration[:-1]
+        else:
+            timer_scoreboard = "pwa_effects_tick_timer"
+            timer_tag = "pwa_effects_tick_timer"
+            timer_list = "data.pwa_effects_tick_timers"
+
+        # get the target time
+        is_random = ".." in duration
+        if is_random:
+            execute store result score #trigger pwa_effects_temp run random value duration
+        else:
+            scoreboard players set #trigger pwa_effects_temp duration
+        scoreboard players operation #trigger pwa_effects_temp += #time timer_scoreboard
+
+        # store the target function, location, delay time in storage / the entity
+        # VERSION: >=1.21.5: now all entities can store custom_data in "data" - all entities can hold timers
+        # TODO: can't modify player data, so no timers on players?
+        # TODO: could store entity-specific data in storage,
+        #       but it's awkward and don't know if entities are dead or just unloaded...
+        execute if entity @s[type=marker]:
+            tag @s add timer_tag
+            data modify entity @s timer_list append value {time: 0, callback: callback}
+            execute store result entity @s f'{timer_list}[-1].time' int 1 run scoreboard players get #trigger pwa_effects_temp
+        execute unless entity @s[type=marker]:
+            data modify storage pwa_effects:timers timer_list append value {time: 0, callback: callback}
+            execute store result storage pwa_effects:timers f'{timer_list}[-1].time' int 1 run scoreboard players get #trigger pwa_effects_temp
+
+    # Concurrency is about whether the effect may run multiple times at once.
+    #
+    # any: yes, as often as called
+    # one: only one instance of this effect may be running at a time
+    # perExecutor: one instance per calling entity
+    concurrency = effect.get("concurrency", "perExecutor")
+    if concurrency == "one":
+        running_flag = f'#{effect.id}'
+        running_scoreboard = "pwa_effects_global_is_running"
+    elif concurrency == "perExecutor":
+        running_flag = parse_selector("@s")
+        running_scoreboard = f'pwa_effects_is_running_{effect.id}'
+    elif concurrency == "any":
+        running_flag = ""
+        running_scoreboard = ""
+    else:
+        raise Exception(f"unknown concurrency type: {concurrency}")
+
+    # Concurrency is implemented through a is_running flag on a scoreboard.
+    # These functions emit the code needed for checking and resetting it.
+    def check_running_flag():
+        if not (running_flag and effect.is_async):
+            return
+        execute if score running_flag running_scoreboard matches 1..
+            run function effect.continue_with
+        execute if score running_flag running_scoreboard matches 1..
+            run return 1
+        scoreboard players set running_flag running_scoreboard 1
+    def clear_running_flag():
+        if running_flag and effect.is_async:
+            scoreboard players set running_flag running_scoreboard 0
+
+    # Effects may be deactivated. This emits code for checking for the flag.
+    def check_deactivated_flag():
+        # TODO: This doesn't work if the deactivated flag is changed during
+        # continue_with...
+        if effect.is_async:
+            execute if score effect.id pwa_effects_effect_is_deactivated matches 1
+                run function effect.continue_with
+        execute if score effect.id pwa_effects_effect_is_deactivated matches 1
+            run return 1
+
+    # Some effects need condition functions to be generated
+    if effect.kind == "check_condition":
+        emit_condition_function_recursive(effect.condition)
+
+    # Emit effect code
+
+    # The sequential effect needs special handling
+    if effect.kind == "sequential":
+        cont = effect.sequential
+        cont_count = -1
+        while len(cont) > 0:
+            function fnname(cont_count):
+                if cont_count == -1:
+                    check_deactivated_flag()
+                    check_running_flag()
+                cont_count += 1
+                awaiting = False
+                for subeffect in cont:
+                    cont = cont[1:]
+                    function subeffect.fnname
+                    if subeffect.is_async:
+                        awaiting = True
+                        break
+
+                # In the last continuation function, if we're not ending on an async effect,
+                # we need to make sure to jump to the closing function
+                if effect.is_async and len(cont) == 0 and not awaiting:
+                    function fnname(cont_count)
+
+        # async sequential effects need a final continuation that wraps up
+        if effect.is_async:
+            function fnname(cont_count):
+                clear_running_flag()
+                function effect.continue_with
+
+        return
+
+    # Other effects share the same setup
+    function fnname(-1):
+        check_deactivated_flag()
+        check_running_flag()
+        if effect.kind == "summon":
+            coords = effect.get("coords", "~ ~ ~")
+            at_string = effect.get("at", "@s")
+            selector = parse_selector(at_string)
+            nbt = effect.get("nbt", "")
+            execute at selector run summon effect.entity coords nbt
+        elif effect.kind == "tell_player":
+            say effect.text
+        elif effect.kind == "setblock":
+            coords = parse_vec3(effect.get("coords", "~ ~ ~"))
+            setblock coords effect.block
+        elif effect.kind == "function":
+            function effect.function
+        elif effect.kind == "deactivate_effect":
+            scoreboard players set effect.effect_id pwa_effects_effect_is_deactivated 1
+        elif effect.kind == "deactivate_trigger":
+            scoreboard players set effect.trigger_id pwa_effects_trigger_is_deactivated 1
+        elif effect.kind == "activate_effect":
+            scoreboard players set effect.effect_id pwa_effects_effect_is_deactivated 0
+        elif effect.kind == "activate_trigger":
+            scoreboard players set effect.trigger_id pwa_effects_trigger_is_deactivated 0
+        elif effect.kind == "check_condition":
+            execute store result score #result pwa_effects_temp
+                run function effect.condition.fnname
+            if "onFalse" in effect:
+                execute if score #result pwa_effects_temp matches 0
+                    run function effect.onFalse.fnname
+            if "onTrue" in effect:
+                execute if score #result pwa_effects_temp matches 1
+                    run function effect.onTrue.fnname
+        elif effect.kind == "for_each":
+            execute as @e[type=minecraft:marker, tag=effect.forEach] at @s
+                run function effect.effect.fnname
+        elif effect.kind == "for_random_selection":
+            execute as @e[type=minecraft:marker, tag=effect.at, tag=pwa_effects_random_selection]
+                run tag @s remove pwa_effects_random_selection
+            execute as @e[type=minecraft:marker, tag=effect.at, sort=random, limit=effect.number] at @s:
+                tag @s add pwa_effects_random_selection
+                function effect.onSelected.fnname
+            execute as @e[type=minecraft:marker, tag=effect.at, tag=!pwa_effects_random_selection] at @s:
+                function effect.onNotSelected.fnname
+            execute as @e[type=minecraft:marker, tag=effect.at, tag=pwa_effects_random_selection]
+                run tag @s remove pwa_effects_random_selection
+        elif effect.kind == "wait":
+            start_timer(effect.duration, fnname(0))
+        elif effect.kind == "command":
+            raw effect.command
+        else:
+            raise Exception(f"unsupported effect kind: {effect.kind}")
+
+    if effect.is_async:
+        function fnname(0):
+            clear_running_flag()
+            function effect.continue_with
+
+# Generate code for a user-given setup of markers, triggers, effects
+def generate(setup):
+    # TODO: Transform every effect with cooldown into sequential + wait?
+
+    # Assign ids to anonymous effects in triggers and subeffects in effects
+    top_level_effects = []
+    for trigger in setup.triggers:
+        for name in ["onTrue", "onFalse", "whileTrue", "whileFalse"]:
+            top_level_effects.append((
+                f'{trigger.id}_{name.lower()}',
+                get_effects_field(trigger, name),
+                []))
+
+    for effect in setup.effects:
+        if "concurrency" not in effect:
+            effect["concurrency"] = "one"
+        top_level_effects.append((effect.id, [effect], []))
+
+    # - Find all_effects (including all subeffects)
+    # - Prepare an id and fnname for each effect!
+    # - Mark effects as async if they are asynk or contain an async subeffect (recursively)
+    all_effects = []
+    worklist = list(top_level_effects)
+    while len(worklist) > 0:
+        prefix, effects, effect_stack = worklist.pop()
+        for i, effect in enumerate(effects):
+            all_effects.append(effect)
+
+            new_prefix = prefix
+            if len(effects) > 1:
+                new_prefix = f'{prefix}{i}'
+            if id not in effect:
+                effect["id"] = new_prefix
+
+            if len(effect_stack) == 0:
+                effect["fnname"] = f'pwa_effects:effect/{effect.id}'
+            else:
+                effect["fnname"] = f'pwa_effects:zzzinternal/effect/{effect.id}'
+
+            if len(effect_stack) > 0 and "concurrency" not in effect:
+                effect["concurrency"] = "any"
+
+            # If there is an async effect, all callers potentially need to deal
+            # with this fact. It only affects effects that need to chain subeffects though.
+            if effect.kind in async_effects:
+                effect["is_async"] = True
+                for e in effect_stack:
+                    e["is_async"] = True
+            else:
+                effect["is_async"] = False
+
+            for name in effect_field_names(effect.kind):
+                worklist.append((f'{new_prefix}_{name.lower()}', get_effects_field(effect, name), effect_stack + [effect]))
+
+    # For each async effect, determine continue_with
+    worklist = list(top_level_effects)
+    while len(worklist) > 0:
+        _, effects, effect_stack = worklist.pop()
+        async_continuation = 0
+        for i, effect in enumerate(effects):
+            if not effect.is_async:
+                continue
+
+            if len(effect_stack) == 0:
+                effect["continue_with"] = 'pwa_effects:zzzinternal/do_nothing'
+            else:
+                # TODO: This would not work for effects that have multiple lists of subeffects!
+                parent = effect_stack[-1]
+                effect["continue_with"] = f'pwa_effects:zzzinternal/effect/{parent.id}_continue{async_continuation}'
+                async_continuation += 1
+
+            for name in effect_field_names(effect.kind):
+                worklist.append(('', get_effects_field(effect, name), effect_stack + [effect]))
+
+
+    # TODO: deal with by-id references
+    # TODO: for now, verify that all async effects are referenced at most once
+    effects_map = {}
+    for effect in all_effects:
+        effects_map[effect.id] = effect
+
+    for trigger in setup.triggers:
+        emit_condition_function_recursive(trigger.condition)
+        emit_trigger_function(trigger)
+
+    for effect in all_effects:
+        emit_effect_functions(effect)
+
+    function pwa_effects:zzzinternal/tick:
+        for trigger in setup.triggers:
+            function trigger.fnname
+
+        function pwa_effects:zzzinternal/tick_timer
+
+    append function_tag minecraft:tick {
+        "values": [ "pwa_effects:zzzinternal/tick" ]
+    }
+
+    function pwa_effects:zzzinternal/load:
+        scoreboard objectives add pwa_effects_global_trigger_status dummy
+        scoreboard objectives add pwa_effects_global_is_running dummy
+        scoreboard objectives add pwa_effects_trigger_is_deactivated dummy
+        scoreboard objectives add pwa_effects_effect_is_deactivated dummy
+        scoreboard objectives add pwa_effects_tick_timer dummy
+        scoreboard objectives add pwa_effects_seconds_timer dummy
+        scoreboard objectives add pwa_effects_temp dummy
+
+        execute unless data storage pwa_effects:timers data
+            run data modify storage pwa_effects:timers data set value { pwa_effects_seconds_timers: [], pwa_effects_tick_timers: [] }
+
+        schedule function pwa_effects:zzzinternal/seconds_timer 1s replace
+
+        for effect in all_effects:
+            if not effect.is_async:
+                continue
+            if effect.get("concurrency", "perExecutor") != "perExecutor":
+                continue
+            scoreboard objectives add f'pwa_effects_is_running_{effect.id}' dummy
+
+        for tag, marker in setup.markers.items():
+            function pwa_markers:set_marker_info {tag:tag,vis_block:marker.placeholder,glow_color:marker.glow_color}
+
+    append function_tag minecraft:load {
+        "values": [ "pwa_effects:zzzinternal/load" ]
+    }
+
+    function pwa_effects:reset_all_is_running:
+        scoreboard players reset * pwa_effects_global_is_running
+        for effect in all_effects:
+            if not effect.is_async:
+                continue
+            if effect.get("concurrency", "perExecutor") != "perExecutor":
+                continue
+            scoreboard players reset * f'pwa_effects_is_running_{effect.id}'
+
+    function pwa_effects:reset_all_deactivated:
+        scoreboard players reset * pwa_effects_trigger_is_deactivated
+        scoreboard players reset * pwa_effects_effect_is_deactivated
+
+    for tag, marker in setup.markers.items():
+        function f'pwa_effects:marker/{tag}/frame':
+            function pwa_markers:give_item_frame_tool {tag:tag}
+        function f'pwa_effects:marker/{tag}/wand':
+            function pwa_markers:give_wand_tool {tag:tag}
+        function f'pwa_effects:marker/{tag}/block':
+            raw f'$function pwa_markers:give_block_tool {{tag:"{tag}",block:"$(block)"}}'
+
+#
+# Timers
+#
+# Timers are complicated! We have:
+# 1. Entity (usually type=marker) based timers. Their callback is run as+at the entity that set
+#    up the timer. If the entity gets unloaded and the trigger time is reached, the timer
+#    won't be run. But it will be run when the entity is loaded again.
+#
+#    In the future, we could add entity timer variants with different behavior:
+#    - variant A: deleted if the entity is unloaded at the time that they should trigger
+#    - variant B: trigger time does not progress while the entity is unloaded
+#    But for now the existing behavior is sufficient.
+# 2. Global timers (storage based) that work independently of entities.
+#
+# These definitely need some profiling.
+#
+# For global timers, we could optimize by storing a pwa_effects_tick_timer_{tick} value
+# if a timer needs to be run that tick - then we could query if we need to loop over the
+# list of timers on a particular tick relatively cheaply.
+# However, for entity timers this wouldn't work because the entity may be unloaded on
+# the tick when its timer is due - and then it should be run on some later tick whe it's
+# loaded again.
+def timer_functions(unit):
+    timer_scoreboard = f'pwa_effects_{unit}_timer'
+    timer_list = f'data.pwa_effects_{unit}_timers'
+    timer_tag = f'pwa_effects_{unit}_timer'
+
+    function f'pwa_effects:zzzinternal/{unit}_timer':
+        # TODO: as an optimization, maybe we set the "z{time}" score on a special scoreboard
+        # when adding timers? that way it would be a simple scoreboard check to see if any
+        # timers fire this tick.
+        scoreboard players add #time timer_scoreboard 1
+
+        # global timers
+        data modify storage pwa_effects:temp call_args set value {data:"storage pwa_effects:timers"}
+        data modify storage pwa_effects:temp timer_iter set from storage pwa_effects:timers timer_list
+        execute store result score #timer_index pwa_effects_temp run data get storage pwa_effects:temp timer_iter
+        function f'pwa_effects:zzzinternal/{unit}_timer_iteration'
+
+        # timers for entities
+        data modify storage pwa_effects:temp call_args set value {data:"entity @s"}
+        execute as @e[tag=timer_tag] at @s run function f'pwa_effects:zzzinternal/{unit}_entity_timer'
+
+        if unit == "seconds":
+            schedule function f'pwa_effects:zzzinternal/{unit}_timer' 1s replace
+
+    function f'pwa_effects:zzzinternal/{unit}_entity_timer':
+        data modify storage pwa_effects:temp timer_iter set from entity @s timer_list
+        execute store result score #timer_index pwa_effects_temp run data get storage pwa_effects:temp timer_iter
+        function f'pwa_effects:zzzinternal/{unit}_timer_iteration'
+
+        execute store result score #timer_count pwa_effects_temp run data get entity @s timer_list
+        execute if score #timer_count pwa_effects_temp matches 0
+            run tag @s remove timer_tag
+
+    # Iterates over a list of timers, triggering them when it's time and removing them
+    # from the base list.
+    function f'pwa_effects:zzzinternal/{unit}_timer_iteration':
+        execute unless data storage pwa_effects:temp timer_iter[-1] run return 1
+        scoreboard players remove #timer_index pwa_effects_temp 1
+
+        # Check if the target time is in the past
+        execute store result score #target pwa_effects_temp run data get storage pwa_effects:temp timer_iter[-1].time
+        scoreboard players operation #temp pwa_effects_temp = #time timer_scoreboard
+        scoreboard players operation #temp pwa_effects_temp -= #target pwa_effects_temp
+        execute if score #temp pwa_effects_temp matches 0..:
+            function pwa_effects:zzzinternal/timer_run with storage pwa_effects:temp timer_iter[-1]
+
+            # drop the timer from the original list
+            execute store result storage pwa_effects:temp call_args.index int 1 run scoreboard players get #timer_index pwa_effects_temp
+            function f'pwa_effects:zzzinternal/{unit}_timer_remove' with storage pwa_effects:temp call_args
+
+        data remove storage pwa_effects:temp timer_iter[-1]
+        function f'pwa_effects:zzzinternal/{unit}_timer_iteration'
+
+    function f'pwa_effects:zzzinternal/{unit}_timer_remove':
+        raw f'$data remove $(data) {timer_list}[$(index)]'
+
+timer_functions("tick")
+timer_functions("seconds")
+
+function pwa_effects:zzzinternal/timer_run:
+    $function $(callback)
+
+function pwa_effects:zzzinternal/do_nothing:
+    pass

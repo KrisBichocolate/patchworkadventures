@@ -1,0 +1,40 @@
+from ./markers import editor_tag, editor_tag_temporary
+
+#
+# Admin functions
+#
+
+function pwa_markers:begin_edit:
+    tag @s add editor_tag
+    tag @s remove editor_tag_temporary
+    scoreboard players set @s pwa_markers_carrot_on_a_stick_used 0
+    scoreboard players set @s pwa_markers_warped_fungus_on_a_stick_used 0
+
+function pwa_markers:end_edit:
+    tag @s remove editor_tag
+
+    # run a tick so all the visibility gets updated
+    function pwa_markers:zzzinternal/editor_tick_internal
+
+# args {tag:"mytag",vis_block:"minecraft:glass",glow_color:0}
+function pwa_markers:set_marker_info:
+    scoreboard players set #new_marker pwa_markers_temp 0
+    $execute unless data storage pwa_markers:markers kv.$(tag) run scoreboard players set #new_marker pwa_markers_temp 1
+    $execute unless data storage pwa_markers:markers kv.$(tag) run data modify storage pwa_markers:markers keys append value "$(tag)"
+    $data modify storage pwa_markers:markers kv.$(tag) set value {tag:"$(tag)",vis_block:"$(vis_block)",glow_color:$(glow_color)}
+    $execute store result storage pwa_markers:markers kv.$(tag).glow_color int 1 run function pwa_markers:zzzinternal/color_name_to_value {name:"$(glow_color)"}
+    $data modify storage pwa_markers:markers kv.$(tag).marker_data set value {tag:"$(tag)"}
+
+    # Hide all markers, so their displays get regenerated
+    execute as @e[
+            type=minecraft:marker, tag=pwa_markers_marker,
+            tag=pwa_markers_marker_visible
+            ] at @s:
+        tag @s remove pwa_markers_marker_visible
+        function pwa_markers:zzzinternal/kill_marker_display
+
+    $execute if score #new_marker pwa_markers_temp matches 1 run function pwa_markers:zzzinternal/menu_give_tools {tag:"$(tag)"}
+
+# Sets up default marker arguments for a tag
+function pwa_markers:zzzinternal/default_marker:
+    $function pwa_markers:set_marker_info {tag:"$(tag)", vis_block:"minecraft:glass", glow_color: "purple"}

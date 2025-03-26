@@ -1,0 +1,335 @@
+from mecha import AstRange
+from ./effects import generate
+
+setup = {
+    markers: {
+        slime_spawn_point: {
+            placeholder: "minecraft:green_wool",
+            glow_color: "green",
+        },
+        respawning_block: {
+            placeholder: "minecraft:glass",
+            glow_color: "gray",
+        },
+        candle_puzzle_candle: {
+            placeholder: "minecraft:glass",
+            glow_color: "yellow",
+        },
+        randomized_lever: {
+            placeholder: "minecraft:glass",
+            glow_color: "blue",
+        },
+        doorbell: {
+            placeholder: "minecraft:glass",
+            glow_color: "white",
+        },
+        grate: {
+            placeholder: "minecraft:glass",
+            glow_color: "black",
+        }
+    },
+    triggers: [
+        {
+            id: "slime_spawner",
+            forEach: "slime_spawn_point",
+            condition: {
+                kind: "player_nearby",
+                distance: 3,
+            },
+            onTrue: {
+                kind: "check_condition",
+                condition: {
+                    kind: "random",
+                    chance: "3 in 3",
+                },
+                onTrue: {
+                    kind: "summon",
+                    entity: "slime",
+                    nbt: {Size:0},
+                    cooldown: "180s", # TODO?
+                }
+            }
+        },
+        {
+            id: "door_opener",
+            condition: {
+                kind: "any",
+                at: "doorbell",
+                condition: {
+                    kind: "hit_by_arrow",
+                }
+            },
+            onTrue: {
+                kind: "sequential",
+                sequential: [
+                    {
+                        kind: "command",
+                        command: "execute at @e[tag=doorbell] run playsound block.grindstone.use master @a"
+                    },
+                    {
+                        kind: "wait",
+                        duration: "10",
+                    },
+                    {
+                        kind: "command",
+                        command: "execute at @e[tag=doorbell] positioned ~ ~-1 ~ run function doorbell_chain_with_stone_down"
+                    },
+                    {
+                        kind: "for_each",
+                        forEach: "grate",
+                        effect: {
+                            kind: "setblock",
+                            coords: "~ ~ ~",
+                            block: "air"
+                        },
+                    },
+                    {
+                        kind: "wait",
+                        duration: "10",
+                    },
+                    {
+                        kind: "command",
+                        command: "execute at @e[tag=doorbell] positioned ~ ~-2 ~ run function doorbell_chain_with_stone_down"
+                    },
+                    {
+                        kind: "for_each",
+                        forEach: "grate",
+                        effect: {
+                            kind: "setblock",
+                            coords: "~ ~1 ~",
+                            block: "air"
+                        },
+                    },
+                    {
+                        kind: "wait",
+                        duration: "4s",
+                    },
+                    {
+                        kind: "command",
+                        command: "execute at @e[tag=doorbell] run playsound block.grindstone.use master @a"
+                    },
+                    {
+                        kind: "wait",
+                        duration: "10",
+                    },
+                    {
+                        kind: "for_each",
+                        forEach: "grate",
+                        effect: {
+                            kind: "setblock",
+                            coords: "~ ~1 ~",
+                            block: "iron_bars"
+                        },
+                    },
+                    {
+                        kind: "command",
+                        command: "execute at @e[tag=doorbell] positioned ~ ~-2 ~ run function doorbell_chain_with_stone_up"
+                    },
+                    {
+                        kind: "wait",
+                        duration: "10",
+                    },
+                    {
+                        kind: "for_each",
+                        forEach: "grate",
+                        effect: {
+                            kind: "setblock",
+                            coords: "~ ~ ~",
+                            block: "iron_bars"
+                        },
+                    },
+                    {
+                        kind: "command",
+                        command: "execute at @e[tag=doorbell] positioned ~ ~-1 ~ run function doorbell_chain_with_stone_up"
+                    },
+                ]
+            }
+        },
+        {
+            id: "respawning_block",
+            forEach: "respawning_block",
+            condition: {
+                kind: "is_block",
+                block: "minecraft:air",
+            },
+            onTrue: {
+                kind: "sequential",
+                sequential: [
+                    {
+                        kind: "setblock",
+                        coords: "~ ~ ~",
+                        block: "cobblestone"
+                    },
+                    {
+                        kind: "wait",
+                        duration: "2..8s",
+                    },
+                    {
+                        kind: "function",
+                        function: "respawning_block_reset"
+                    },
+                ]
+            }
+        },
+        {
+            id: "candle_puzzle",
+            condition: {
+                kind: "all",
+                at: "candle_puzzle_candle",
+                condition: {
+                    kind: "is_block",
+                    block: "#minecraft:candles[lit=true]"
+                }
+            },
+            onTrue: {
+                kind: "sequential",
+                sequential: [
+                    {
+                        kind: "command",
+                        command: 'title @a title {"text": "Rewards?"}',
+                    },
+                    {
+                        kind: "command",
+                        command: 'tellraw @a "Candle puzzle solved! Rewards?"',
+                    },
+                    {
+                        kind: "deactivate_trigger",
+                        trigger_id: "candle_puzzle",
+                    }
+                ],
+            }
+        },
+        {
+            id: "random_lever_powered",
+            condition: {
+                kind: "any",
+                at: "randomized_lever",
+                condition: {
+                    kind: "is_block",
+                    block: "minecraft:lever[powered=true]"
+                }
+            },
+            onTrue: {
+                kind: "sequential",
+                sequential: [
+                    {
+                        kind: "command",
+                        command: 'title @a title {"text": "You can leave now."}',
+                    },
+                    {
+                        kind: "command",
+                        command: 'tellraw @a "Randomized lever pulled, you can leave now!"',
+                    },
+                ]
+            }
+        }
+    ],
+    effects: [
+        {
+            id: "randomize_levers",
+            kind: "for_random_selection",
+            at: "randomized_lever",
+            number: 1,
+            onSelected: {
+                kind: "setblock",
+                block: "minecraft:lever[facing=south]"
+            },
+            onNotSelected: {
+                kind: "setblock",
+                block: "minecraft:air"
+            }
+        },
+        {
+            id: "async_test",
+            kind: "sequential",
+            sequential: [
+                {
+                    kind: "wait",
+                    duration: "1",
+                },
+                {
+                    kind: "tell_player",
+                    text: "A",
+                },
+                {
+                    kind: "tell_player",
+                    text: "B",
+                },
+                {
+                    kind: "wait",
+                    duration: "1s",
+                },
+                {
+                    kind: "tell_player",
+                    text: "C",
+                },
+                {
+                    kind: "sequential",
+                    sequential: [
+                        {
+                            kind: "tell_player",
+                            text: "D",
+                        },
+                        {
+                            kind: "wait",
+                            duration: "1",
+                        },
+                        {
+                            kind: "tell_player",
+                            text: "E",
+                        },
+                    ]
+                },
+                {
+                    kind: "sequential",
+                    sequential: [
+                        {
+                            kind: "tell_player",
+                            text: "F",
+                        },
+                        {
+                            kind: "wait",
+                            duration: "1",
+                        },
+                    ]
+                },
+                {
+                    kind: "sequential",
+                    sequential: [
+                        {
+                            kind: "tell_player",
+                            text: "G",
+                        },
+                    ]
+                },
+                {
+                    kind: "tell_player",
+                    text: "H",
+                },
+            ]
+        }
+    ],
+}
+
+function respawning_block_reset:
+    function respawning_block_reset_inner with entity @s data
+
+function respawning_block_reset_inner:
+    $setblock ~ ~ ~ $(block)
+
+function doorbell_chain_with_stone_down:
+    setblock ~ ~ ~ chain[axis=y]
+    setblock ~ ~-1 ~ smooth_stone
+
+function doorbell_chain_with_stone_up:
+    setblock ~ ~ ~ smooth_stone
+    setblock ~ ~-1 ~ air
+
+generate(setup)
+
+
+macro do_randomly count=brigadier:integer out of maximum=brigadier:integer body=mecha:nested_root:
+    execute:
+        execute store result score #rng patchworkadventures_temp run random value AstRange(min=1, max=maximum.value)
+        execute if score #rng patchworkadventures_temp matches AstRange(min=1, max=count.value):
+            yield body

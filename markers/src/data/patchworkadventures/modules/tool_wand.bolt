@@ -1,0 +1,81 @@
+#
+# Wand tool
+#
+# This tool works by watching the carrot_on_a_stick usage scoreboard.
+# On use, we raycast to the looked-at block and place a marker inside.
+
+# Need to check if the carrot_on_a_stick used was one of our tools.
+predicate pwa_markers:marker_tool_wand_held {
+    "condition": "minecraft:entity_properties",
+    "entity": "this",
+    "predicate": {
+        "equipment": {
+            "mainhand": {
+                "items": ["minecraft:carrot_on_a_stick"],
+                "predicates": {
+                    "custom_data": "{pwa_markers_marker_tool:1b}"
+                }
+            }
+        }
+    }
+}
+
+function pwa_markers:zzzinternal/wand_tool/clicked:
+    function pwa_utils:raycast_from_eyes {
+        hitCheckCallback:"pwa_markers:zzzinternal/wand_tool/hit_check",
+        increment:"0.1",
+        max:"100",
+        custom:{}
+    }
+
+function pwa_markers:zzzinternal/wand_tool/hit_check:
+    # If we hit an existing marker along the way, remove it
+    execute align xyz positioned ~0.5 ~0.5 ~0.5
+        as @e[type=minecraft:marker, tag=pwa_markers_marker, distance=..0.1, limit=1]:
+            kill @s
+            function pwa_markers:zzzinternal/kill_marker_display
+            function pwa_utils:raycast_finish
+    execute if score #hit pwa_utils_raycast matches 1 run return 1
+
+    # Otherwise keep going through air
+    execute if block ~ ~ ~ minecraft:air run return 1
+    function pwa_utils:raycast_finish
+
+    # TODO: also set the data.block flag, by using /loot ... mine to detect the block type
+    # That kind of works, but not for all blocks, and more importantly, it doesn't
+    # preserve the blockstate. Very sad. Waiting for minecraft to allow /data to deal with blockstate
+
+    # toggle block marking
+    execute align xyz positioned ~0.5 ~0.5 ~0.5:
+        summon minecraft:marker ~ ~ ~
+        data modify entity @e[type=minecraft:marker, distance=..0.1, limit=1] Tags
+            set value ["pwa_markers_marker", "pwa_markers_marker_with_block"]
+        data modify entity @e[type=minecraft:marker, distance=..0.1, limit=1] Tags
+            append from entity @s SelectedItem.components."minecraft:custom_data".marker_data.tag
+        data modify entity @e[type=minecraft:marker, distance=..0.1, limit=1] data
+            set from entity @s SelectedItem.components."minecraft:custom_data".marker_data
+
+# For wands and blocks, tool data is set up from data storage
+# by applying a conditional item modifier to all slots of the player
+# inventory.
+#
+# args {tag:"mytag"}
+function pwa_markers:give_wand_tool:
+    $execute unless data storage pwa_markers:markers kv.$(tag) run function pwa_markers:zzzinternal/default_marker {tag:"$(tag)"}
+    $data modify storage pwa_markers:temp new_marker_tool set from storage pwa_markers:markers kv.$(tag).marker_data
+    data modify storage pwa_markers:temp new_marker_tool.tool_type set value "wand"
+
+    give @s minecraft:carrot_on_a_stick[
+        custom_data={
+            pwa_markers_marker_tool:1b,
+            pwa_markers_new_marker_tool:1b,
+            marker_data:{}
+        },
+        custom_name='{"color":"aqua","text":"<uninitialized>"}'
+    ] 1
+    data modify storage pwa_markers:temp zero set value 0
+    function pwa_markers:zzzinternal/marker_tool_prepare_make_name_entity with storage pwa_markers:temp new_marker_tool
+    execute as @e[type=minecraft:marker, tag=pwa_markers_name_entity]
+        run function pwa_markers:zzzinternal/marker_tool_prepare
+    data remove storage pwa_markers:temp new_marker_tool
+    kill @e[type=minecraft:marker, tag=pwa_markers_name_entity]
