@@ -6,6 +6,8 @@ The goal of this project is to create tools, datapacks, mods for Java Minecraft 
 
 The markers datapack provides tools for dealing with marker entities. Marker entities come up a lot when populating dungeons or points of interest and the idea is to simplify their handling.
 
+Video: https://www.youtube.com/watch?v=JDgZCp-Ha_o
+
 After installation, trigger the main menu with
 ```
 /function pwa_markers:menu
