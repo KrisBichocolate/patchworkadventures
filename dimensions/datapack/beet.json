@@ -1,0 +1,14 @@
+{
+    "name": "Patchwork Adventures: Dimensions",
+    "author": "Kris Bichocolate",
+    "description": "Companion datapack for the dimensions mod",
+    "require": ["bolt"],
+    "data_pack": {
+        "load": ["src"]
+    },
+    "pipeline": ["mecha"],
+    "meta": {
+        "bolt": {"entrypoint": ["pwa_dimensions:*"]}
+    },
+    "output": "build"
+}

@@ -2,6 +2,12 @@
 
 The goal of this project is to create tools, datapacks, mods for Java Minecraft 1.21.1 that create an experience similar to the one seen on the Misadventures SMP.
 
+## Dimensions Mod and Datapack
+
+Adds a resettable resource world as well as infrastructure for instanced dungeons.
+
+See [dimensions/README.md](dimensions/README.md).
+
 ## Markers Datapack
 
 The markers datapack provides tools for dealing with marker entities. Marker entities come up a lot when populating dungeons or points of interest and the idea is to simplify their handling.

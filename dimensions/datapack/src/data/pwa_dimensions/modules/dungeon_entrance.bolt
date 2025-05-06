@@ -1,0 +1,126 @@
+player_tag = "pwa_dimensions_player"
+
+dungeon_entrance_tag = "pwa_dimensions_dungeon_entrance"
+
+dungeon_exit_tag = "pwa_dimensions_dungeon_exit"
+dungeon_exit_target_tag = "pwa_dimensions_dungeon_exit_target"
+
+dungeon_entrance_countdown_tag = "pwa_dimensions_dungeon_entrance_countdown"
+dungeon_entrance_countdown_scoreboard = "pwa_dimensions_dungeon_entrance_countdown"
+
+temp_scoreboard = "pwa_dimensions_temp"
+
+# TODO: could be nice if the countdown reset when the number of nearby players changes
+function pwa_dimensions:dungeon_entrance/tick:
+    # No more players around an entrance? Cancel the countdown and maybe delete the
+    # precreated instance.
+    execute
+            as @e[type=marker, tag=dungeon_entrance_tag, tag=dungeon_entrance_countdown_tag]
+            at @s
+            unless entity @a[tag=player_tag, distance=..3]:
+        tag @s remove dungeon_entrance_countdown_tag
+
+        # If an instance was already created, delete it now
+        execute if data entity @s data.target_instance:
+            function pwa_dimensions:dungeon_entrance/delete_instance with entity @s data.target_instance
+            data remove entity @s data.target_instance
+
+    # Players around an entrance without a countdown? Start it!
+    execute
+            as @e[type=marker, tag=dungeon_entrance_tag, tag=!dungeon_entrance_countdown_tag]
+            at @s
+            if entity @a[tag=player_tag, distance=..3]:
+        tag @s add dungeon_entrance_countdown_tag
+        scoreboard players set @s dungeon_entrance_countdown_scoreboard 100
+
+    # Entrance countdown management
+    execute
+            as @e[type=marker, tag=dungeon_entrance_tag, tag=dungeon_entrance_countdown_tag]
+            at @s:
+        # Compute remaining time
+        scoreboard players set #ticks_per_sec temp_scoreboard 20
+        scoreboard players operation #remtick temp_scoreboard = @s dungeon_entrance_countdown_scoreboard
+        scoreboard players operation #remtick temp_scoreboard %= #ticks_per_sec temp_scoreboard
+        scoreboard players operation #secs temp_scoreboard = @s dungeon_entrance_countdown_scoreboard
+        scoreboard players operation #secs temp_scoreboard /= #ticks_per_sec temp_scoreboard
+
+        execute
+                if score #remtick temp_scoreboard matches 0
+                if score #secs temp_scoreboard matches 1..:
+            tellraw @a[tag=player_tag, distance=..3] [{"text":"Entering dungeon in "},{"score":{"name":"#secs","objective":"pwa_dimensions_temp"}}]
+
+        # Prepare the instance in the last second (it needs at least one tick to get ready)
+        execute if score @s dungeon_entrance_countdown_scoreboard matches 20:
+            function pwa_dimensions:dungeon_entrance/create_instance with entity @s data
+
+        # Countdown done! Move players in and reset.
+        execute if score @s dungeon_entrance_countdown_scoreboard matches 0:
+            tellraw @a[tag=player_tag, distance=..3] "Entering dungeon..."
+
+            function pwa_dimensions:dungeon_entrance/tp_players_into_instance with entity @s data.target_instance
+
+            tag @s remove dungeon_entrance_countdown_tag
+            data remove entity @s data.target_instance
+
+        scoreboard players remove @s dungeon_entrance_countdown_scoreboard 1
+
+# This helper deals with moving players into a dungeon instance.
+#
+# - store the instance exit location for each player
+# - register each player with the instance keepalive
+#   (so the instance can auto-delete when all players have left)
+# - set player gamemode to adventure
+# - teleport players in
+function pwa_dimensions:dungeon_entrance/tp_players_into_instance:
+    tag @a[tag=player_tag, distance=..3] add pwa_dimensions_entering_dungeon
+
+    execute if entity @e[type=marker, tag=dungeon_exit_target_tag, sort=nearest, limit=1]:
+        raw playeranchor set @a[tag=pwa_dimensions_entering_dungeon] instance_exit @e[type=marker, tag=pwa_dimensions_dungeon_exit_target, sort=nearest, limit=1]
+    execute unless entity @e[type=marker, tag=dungeon_exit_target_tag, sort=nearest, limit=1]:
+        raw playeranchor set @a[tag=pwa_dimensions_entering_dungeon] instance_exit @s
+
+    $execute in $(new_world) run instance keepalive add @a[tag=pwa_dimensions_entering_dungeon]
+    $execute as @a[tag=pwa_dimensions_entering_dungeon] run mw tp $(new_world)
+    gamemode adventure @a[tag=pwa_dimensions_entering_dungeon]
+
+    tag @a[tag=pwa_dimensions_entering_dungeon] remove pwa_dimensions_entering_dungeon
+
+# Create an instance from $(dungeon_template) and store the generated names on
+# the dungeon entrance marker (@s)
+function pwa_dimensions:dungeon_entrance/create_instance:
+    $instance create $(dungeon_template)
+    data modify entity @s data.target_instance set from storage pwa_dimensions:return_value {}
+
+# Delete instance $(new_instance)
+function pwa_dimensions:dungeon_entrance/delete_instance:
+    $instance keepalive remove $(new_instance) @a
+
+
+
+
+# Remove the current player from the current instance dimension
+# - set player gamemode to survival
+# - tp to stored instance exit location
+# - remove player from dungeon instance keepalive (potentially causing deletion)
+function pwa_dimensions:remove_player_from_instance:
+    gamemode survival @s
+    raw playeranchor tp @s @s instance_exit
+    raw playeranchor unset @s instance_exit
+    raw instance keepalive remove @s
+
+# This function is called from the mod if a player dies in an instance.
+# It's called on the player that is just respawning, but still in the instance dimension.
+function pwa_dimensions:player_death_in_instance:
+    function pwa_dimensions:remove_player_from_instance
+
+
+# Dungeon exit: remove nearby players from instance
+function pwa_dimensions:dungeon_exit/tick:
+    execute as @e[type=marker, tag=dungeon_exit_tag] at @s:
+        execute as @a[tag=player_tag, distance=..3]:
+            function pwa_dimensions:remove_player_from_instance
+
+
+# Helper to set the closest entrance's target template to $(template)
+function pwa_dimensions:dungeon_entrance/set_closest_entrance_template:
+    $data modify entity @e[type=marker, tag=pwa_dimensions_dungeon_entrance, sort=nearest, limit=1, distance=..16] data.dungeon_template set value "$(template)"

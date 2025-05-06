@@ -1,0 +1,50 @@
+{
+	"schemaVersion": 1,
+	"id": "patchworkadventures-dimensions",
+	"version": "${version}",
+	"name": "Patchwork Adventures: Dimensions",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/patchworkadventures-dimensions/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"krisbichocolate.patchworkadventures.dimensions.PatchworkAdventures"
+		],
+		"client": [
+			"krisbichocolate.patchworkadventures.dimensions.PatchworkAdventuresClient"
+		],
+		"cardinal-components": [
+			"krisbichocolate.patchworkadventures.dimensions.component.ModComponents"
+		]
+	},
+	"mixins": [
+		"patchworkadventures-dimensions.mixins.json",
+		{
+			"config": "patchworkadventures-dimensions.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.16.14",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	},
+	"custom": {
+		"cardinal-components": [
+			"pwa_dimensions:anchors"
+		]
+	},
+	"accessWidener": "patchworkadventures-dimensions.accesswidener"
+}

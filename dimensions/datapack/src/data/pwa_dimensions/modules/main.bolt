@@ -1,0 +1,25 @@
+from ./dungeon_entrance import dungeon_entrance_countdown_scoreboard, temp_scoreboard
+
+function pwa_dimensions:tick:
+    function pwa_dimensions:dungeon_entrance/tick
+    function pwa_dimensions:dungeon_exit/tick
+
+append function_tag minecraft:tick {
+    "values": [ "pwa_dimensions:tick" ]
+}
+
+function pwa_dimensions:load:
+    scoreboard objectives add dungeon_entrance_countdown_scoreboard dummy
+    scoreboard objectives add temp_scoreboard dummy
+
+append function_tag minecraft:load {
+    "values": [ "pwa_dimensions:load" ]
+}
+
+
+# Example function for dungeon instance creation: Places a redstone block at each
+# marker tagged pwa_dimensions_instance_redstone.
+function pwa_dimensions:instance/set_redstone_blocks:
+    # The distance selector ensures only looking at markers in the current dimension
+    execute as @e[type=marker, tag=pwa_dimensions_instance_redstone, distance=0..] at @s:
+        setblock ~ ~ ~ redstone_block

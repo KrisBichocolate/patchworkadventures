@@ -1,0 +1,13 @@
+{
+	"required": true,
+	"package": "krisbichocolate.patchworkadventures.dimensions.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": [
+		"ExampleMixin",
+		"NetherPortalBlockMixin",
+		"AbstractFireBlockMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
