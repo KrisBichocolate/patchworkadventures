@@ -302,7 +302,7 @@ public class PlayerAnchorCommands {
             return false;
         }
 
-        player.teleport(world, pos.x, pos.y, pos.z, yaw, player.getPitch());
+        player.teleport(world, pos.x, pos.y, pos.z, yaw, 0f);
         return true;
     }
 }
