@@ -176,7 +176,7 @@ public class PlayerAnchorCommands {
             // Teleport each entity
             int successCount = 0;
             for (net.minecraft.entity.Entity entity : entities) {
-                entity.teleport(world, pos.x, pos.y, pos.z, PositionFlag.VALUES, yaw, entity.getPitch());
+                entity.teleport(world, pos.x, pos.y, pos.z, PositionFlag.VALUES, yaw, 0f);
                 successCount++;
             }
 

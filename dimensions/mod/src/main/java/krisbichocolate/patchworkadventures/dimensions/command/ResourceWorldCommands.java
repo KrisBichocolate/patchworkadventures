@@ -168,8 +168,8 @@ public class ResourceWorldCommands {
             player.teleport(rwWorld, 0, 100, 0, player.getYaw(), player.getPitch());
 
             // Then use spreadplayers logic to find a safe spot on the ground
-            ServerCommandSource rwSource = source.withWorld(rwWorld).withLevel(4);
-            player.getServer().getCommandManager().executeWithPrefix(rwSource, "spreadplayers ~ ~ 25 500 false @s");
+            ServerCommandSource rwSource = source.withWorld(rwWorld).withLevel(4).withSilent();
+            player.getServer().getCommandManager().executeWithPrefix(rwSource, "spreadplayers 0 0 25 250 false @s");
 
             source.sendFeedback(() -> Text.literal("Teleported to a random location in resource world"), false);
 
