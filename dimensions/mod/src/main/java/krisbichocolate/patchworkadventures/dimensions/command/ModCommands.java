@@ -32,7 +32,7 @@ import static net.minecraft.server.command.CommandManager.literal;
 
 public class ModCommands {
     private static final String CONFIG_NAMESPACE = "pwa_dimensions";
-    private static final String CONFIG_KEY = "config";
+    private static final String TEMPLATES_KEY = "templates";
 
     /**
      * Gets the registry key for an instance world
@@ -60,15 +60,8 @@ public class ModCommands {
      * @return The template storage compound
      */
     private static NbtCompound getTemplateStorage(MinecraftServer server) {
-        Identifier configId = Identifier.of(CONFIG_NAMESPACE, CONFIG_KEY);
-        NbtCompound config = server.getDataCommandStorage().get(configId);
-
-        // Create templates object if it doesn't exist
-        if (!config.contains("templates")) {
-            config.put("templates", new NbtCompound());
-        }
-
-        return config.getCompound("templates");
+        Identifier configId = Identifier.of(CONFIG_NAMESPACE, TEMPLATES_KEY);
+        return server.getDataCommandStorage().get(configId);
     }
 
     public static void registerCommands() {
@@ -589,12 +582,7 @@ public class ModCommands {
         NbtCompound templateStorage = getTemplateStorage(server);
 
         // Get all template names from storage
-        for (String key : templateStorage.getKeys()) {
-            // Skip edit templates
-            if (!key.contains("_edit")) {
-                templates.add(key);
-            }
-        }
+        templates.addAll(templateStorage.getKeys());
 
         // Also check for template worlds that might not be in storage yet
         String prefix = "pwa_dimensions:template/";
@@ -602,8 +590,7 @@ public class ModCommands {
             String worldId = world.getRegistryKey().getValue().toString();
             if (worldId.startsWith(prefix)) {
                 String templateName = worldId.substring(prefix.length());
-                // Skip edit templates and don't add duplicates
-                if (!templateName.contains("_edit") && !templates.contains(templateName)) {
+                if (!templates.contains(templateName)) {
                     templates.add(templateName);
                 }
             }

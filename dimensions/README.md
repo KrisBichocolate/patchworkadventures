@@ -122,9 +122,9 @@ This is a helper for storing full locations (dimension, position, yaw) on a play
 
 ## Configuration
 
-Templates are configured in in `storage pwa_dimensions:config`, under the `templates` key.
+Templates are configured in in `storage pwa_dimensions:templates`.
 
-- `templates.<template name>.instantiation_function`: Name of a function to call inside the instance when this template gets instantiated.
+- `<template name>.instantiation_function`: Name of a function to call inside the instance when this template gets instantiated.
 
   Example: "pwa_dimensions:instance/set_redstone_blocks", which is a datapack-provided function that places a redstone block at each marker tagged `pwa_dimensions_instance_redstone`. Make use of `/forceload` in the template to ensure the chunks you need are loaded!
 
