@@ -6,7 +6,6 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import krisbichocolate.patchworkadventures.dimensions.PatchworkAdventures;
 import krisbichocolate.patchworkadventures.dimensions.component.ModComponents;
-import krisbichocolate.patchworkadventures.dimensions.component.PlayerAnchorComponent;
 import krisbichocolate.patchworkadventures.dimensions.TickScheduler;
 import krisbichocolate.patchworkadventures.dimensions.InstanceData;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -83,8 +82,8 @@ public class ModCommands {
         // Register player anchor commands
         PlayerAnchorCommands.registerCommands(dispatcher, registryAccess, environment);
 
-        // Main instance command
-        var instanceCommand = literal("instance");
+        // Main dungeon command
+        var dungeonCommand = literal("dungeon");
 
         // Template subcommands (admin level)
         var templateCommand = literal("template")
@@ -123,6 +122,8 @@ public class ModCommands {
                     })
                     .executes(ModCommands::executeInstanceTemplateDeleteCommand))
         );
+
+        var instanceCommand = literal("instance");
 
         // Instance management subcommands
         instanceCommand.then(
@@ -165,20 +166,19 @@ public class ModCommands {
                     .executes(ModCommands::executeInstanceKeepalivePlayerRemoveCommand))
         );
 
-        // Exit location management is now handled by playeranchor command
-
-        // Add all subcommands to the main instance command
-        instanceCommand.then(templateCommand);
+        // Add all subcommands
         instanceCommand.then(keepaliveCommand);
+        dungeonCommand.then(templateCommand);
+        dungeonCommand.then(instanceCommand);
 
         // Register the main command
-        dispatcher.register(instanceCommand);
+        dispatcher.register(dungeonCommand);
     }
 
 
     /**
      * Creates a new instance template world
-     * Command: /instance template create <name>
+     * Command: /dungeon template create <name>
      */
     private static int executeInstanceTemplateCreateCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource playerSource = context.getSource();
@@ -232,7 +232,7 @@ public class ModCommands {
 
     /**
      * Edits an existing instance template
-     * Command: /instance template edit <name>
+     * Command: /dungeon template edit <name>
      */
     private static int executeInstanceTemplateEditCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource playerSource = context.getSource();
@@ -296,7 +296,7 @@ public class ModCommands {
 
     /**
      * Saves an edited template to a permanent name
-     * Command: /instance template save_and_finish <name>
+     * Command: /dungeon template save_and_finish <name>
      */
     private static int executeInstanceTemplateSaveCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource playerSource = context.getSource();
@@ -358,7 +358,7 @@ public class ModCommands {
 
     /**
      * Deletes an instance template
-     * Command: /instance template delete <name>
+     * Command: /dungeon template delete <name>
      */
     private static int executeInstanceTemplateDeleteCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource playerSource = context.getSource();
@@ -401,7 +401,7 @@ public class ModCommands {
 
     /**
      * Deletes an instance
-     * Command: /instance delete <name>
+     * Command: /dungeon instance delete <name>
      */
     private static int executeInstanceDeleteCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource playerSource = context.getSource();
@@ -441,7 +441,7 @@ public class ModCommands {
 
     /**
      * Creates a new instance from a template with an automatically generated name
-     * Command: /instance create <template>
+     * Command: /dungeon instance create <template>
      */
     private static int executeInstanceCreateCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource playerSource = context.getSource();
@@ -506,7 +506,7 @@ public class ModCommands {
 
     /**
      * Adds multiple players to the keepalive list for the current instance
-     * Command: /instance keepalive add <players>
+     * Command: /dungeon instance keepalive add <players>
      */
     private static int executeInstanceKeepalivePlayerAddCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource source = context.getSource();
@@ -700,7 +700,7 @@ public class ModCommands {
 
     /**
      * Removes multiple players from the keepalive list for the current instance
-     * Command: /instance keepalive remove <players>
+     * Command: /dungeon instance keepalive remove <players>
      */
     private static int executeInstanceKeepalivePlayerRemoveCommand(CommandContext<ServerCommandSource> context) {
         ServerCommandSource source = context.getSource();

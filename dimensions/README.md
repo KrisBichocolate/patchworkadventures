@@ -52,29 +52,29 @@ All commands are admin (level 2) only.
 
 Templates are the worlds that dungeon instances are created from.
 
-The `/instance template` command has a few subcommands:
+The `/dungeon template` command has a few subcommands:
 
-- `/instance template create <new template name>`
+- `/dungeon template create <new template name>`
 
   TODO: generator args!
 
-  Creates a new template edit and teleports the current player into it. Use `/instance template save_and_finish` when done.
+  Creates a new template edit and teleports the current player into it. Use `/dungeon template save_and_finish` when done.
 
-- `/instance template edit <existing template name>`
+- `/dungeon template edit <existing template name>`
 
-  Clones the given template and teleports the current player inside. Use `/instance template save_and_finish` when done to store the edited template under a new name.
+  Clones the given template and teleports the current player inside. Use `/dungeon template save_and_finish` when done to store the edited template under a new name.
 
-- `/instance template save_and_finish <new template name>`
+- `/dungeon template save_and_finish <new template name>`
 
   Finishes the current template edit by copying it to a new dimension and deleting the edit dimension.
 
-- `/instance template delete <existing template name>`
+- `/dungeon template delete <existing template name>`
 
   IMMEDIATELY and PERMANENTLY DELETES the template!
 
 ### Instances
 
-- `/instance create <template name>`
+- `/dungeon instance create <template name>`
 
   Create a new instance as a copy of the template and run the instantiation_function.
 
@@ -84,16 +84,16 @@ The `/instance template` command has a few subcommands:
   - `template`: name of the template used to instantiate
   - `template_config`: copy of the template's configuration
 
-- `/instance delete <instance name>`
+- `/dungeon instance delete <instance name>`
 
   IMMEDIATELY and PERMANENTLY DELETES the instance!
 
-- `/instance keepalive add <players>`
+- `/dungeon instance keepalive add <players>`
 
   Adds the players to the players to the keepalive list for the current instance.
   Instances where all players have been removed from the keepalive list are deleted.
 
-- `/instance keepalive remove <players>`
+- `/dungeon instance keepalive remove <players>`
 
   Removes the players from the current instance's keepalive list. If the list is empty
   permanently delete the instance.

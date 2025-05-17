@@ -79,7 +79,7 @@ function pwa_dimensions:dungeon_entrance/tp_players_into_instance:
     execute unless entity @e[type=marker, tag=dungeon_exit_target_tag, sort=nearest, limit=1]:
         raw playeranchor set @a[tag=pwa_dimensions_entering_dungeon] instance_exit @s
 
-    $execute in $(new_world) run instance keepalive add @a[tag=pwa_dimensions_entering_dungeon]
+    $execute in $(new_world) run dungeon instance keepalive add @a[tag=pwa_dimensions_entering_dungeon]
     $execute as @a[tag=pwa_dimensions_entering_dungeon] run mw tp $(new_world)
     gamemode adventure @a[tag=pwa_dimensions_entering_dungeon]
 
@@ -88,12 +88,12 @@ function pwa_dimensions:dungeon_entrance/tp_players_into_instance:
 # Create an instance from $(dungeon_template) and store the generated names on
 # the dungeon entrance marker (@s)
 function pwa_dimensions:dungeon_entrance/create_instance:
-    $instance create $(dungeon_template)
+    $dungeon instance create $(dungeon_template)
     data modify entity @s data.target_instance set from storage pwa_dimensions:return_value {}
 
 # Delete instance $(new_instance)
 function pwa_dimensions:dungeon_entrance/delete_instance:
-    $instance keepalive remove $(new_instance) @a
+    $dungeon instance keepalive remove $(new_instance) @a
 
 
 
@@ -106,7 +106,7 @@ function pwa_dimensions:remove_player_from_instance:
     gamemode survival @s
     raw playeranchor tp @s @s instance_exit
     raw playeranchor unset @s instance_exit
-    raw instance keepalive remove @s
+    raw dungeon instance keepalive remove @s
 
 # This function is called from the mod if a player dies in an instance.
 # It's called on the player that is just respawning, but still in the instance dimension.
