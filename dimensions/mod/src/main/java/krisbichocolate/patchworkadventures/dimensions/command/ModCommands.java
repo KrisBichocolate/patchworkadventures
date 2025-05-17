@@ -271,9 +271,7 @@ public class ModCommands {
             UUID playerId = player.getUuid();
             TickScheduler.schedule(1, () -> {
                 // Get the world and teleport the player there
-                RegistryKey<World> worldKey = getTemplateWorldKey(editTemplateName);
-                ServerWorld world = source.getServer().getWorld(worldKey);
-
+                ServerWorld world = source.getServer().getWorld(targetWorldKey);
                 if (world == null) {
                     source.sendError(Text.literal("Failed to clone template world"));
                     return;
@@ -283,7 +281,9 @@ public class ModCommands {
                 if (deferredPlayer == null) {
                     return;
                 }
-                deferredPlayer.teleport(world, 0, 100, 0, 0f, 0f);
+                CommandManager cmd2 = source.getServer().getCommandManager();
+                cmd2.executeWithPrefix(source.withEntity(deferredPlayer), "mw tp " + targetWorldId);
+
                 source.sendFeedback(() -> Text.literal("Created editable copy of template: " + targetWorldId), true);
             });
 
