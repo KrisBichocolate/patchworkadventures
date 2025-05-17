@@ -2,6 +2,8 @@
 
 The goal of this project is to create tools, datapacks, mods for Java Minecraft 1.21.1 that create an experience similar to the one seen on the Misadventures SMP.
 
+The project is in an early state and many features are still missing.
+
 ## Dimensions Mod and Datapack
 
 Adds a resettable resource world as well as infrastructure for instanced dungeons.

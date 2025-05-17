@@ -23,7 +23,7 @@ function pwa_markers:set_marker_info:
     $execute unless data storage pwa_markers:markers kv.$(tag) run data modify storage pwa_markers:markers keys append value "$(tag)"
     $data modify storage pwa_markers:markers kv.$(tag) set value {tag:"$(tag)",vis_block:"$(vis_block)",glow_color:$(glow_color)}
     $execute store result storage pwa_markers:markers kv.$(tag).glow_color int 1 run function pwa_markers:zzzinternal/color_name_to_value {name:"$(glow_color)"}
-    $data modify storage pwa_markers:markers kv.$(tag).marker_data set value {tag:"$(tag)"}
+    $data modify storage pwa_markers:markers kv.$(tag).marker_data set value {tag:"$(tag)",name:"$(tag)"}
 
     # Hide all markers, so their displays get regenerated
     execute as @e[
