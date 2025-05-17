@@ -327,6 +327,7 @@ public class ModCommands {
             CommandManager cmd = source.getServer().getCommandManager();
             cmd.executeWithPrefix(source, "mw clone " + currentWorldId + " " + targetWorldId);
             cmd.executeWithPrefix(source, "mw delete " + currentWorldId);
+            cmd.executeWithPrefix(source, "mw unload " + targetWorldId);
 
             // Save the template config
             NbtCompound templateStorage = getTemplateStorage(source.getServer());
@@ -360,18 +361,15 @@ public class ModCommands {
 
         try {
             RegistryKey<World> worldKey = getTemplateWorldKey(templateName);
-            ServerWorld world = source.getServer().getWorld(worldKey);
             String worldId = worldKey.getValue().toString();
 
-            if (world == null) {
-                source.sendError(Text.literal("Template world not found: " + worldId));
-                return 0;
-            }
-
-            // Teleport all players out
-            Collection<ServerPlayerEntity> playersInWorld = new ArrayList<>(world.getPlayers());
-            for (ServerPlayerEntity plr : playersInWorld) {
-                ResourceWorldCommands.teleportPlayerToOverworld(plr);
+            ServerWorld world = source.getServer().getWorld(worldKey);
+            if (world != null) {
+                // Teleport all players out
+                Collection<ServerPlayerEntity> playersInWorld = new ArrayList<>(world.getPlayers());
+                for (ServerPlayerEntity plr : playersInWorld) {
+                    ResourceWorldCommands.teleportPlayerToOverworld(plr);
+                }
             }
 
             // Delete the world
