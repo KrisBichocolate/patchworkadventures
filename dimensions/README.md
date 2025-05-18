@@ -179,12 +179,14 @@ This is a Fabric mod for Minecraft v1.21.1. It does not work with other versions
 You need:
 - Minecraft v1.21.1 with Fabric installed
 - Fabric API mod
-- My custom version of the multiworld mod.
+- [My custom version of the multiworld mod](https://github.com/KrisBichocolate/pwa-multiworld/)
 - The pwa_dimensions mod.
 - The pwa_dimensions datapack.
 
 Recommended:
 - The pwa_markers datapack for placing marker entities.
+
+See [releases](https://github.com/KrisBichocolate/patchworkadventures/releases) for download links.
 
 # Technical
 
