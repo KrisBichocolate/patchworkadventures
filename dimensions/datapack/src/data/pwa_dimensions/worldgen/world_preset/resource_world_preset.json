@@ -4,7 +4,7 @@
       "type": "minecraft:overworld",
       "generator": {
         "type": "pwa_dimensions:noise",
-	"structure_overrides": [],
+        "structure_overrides": [],
         "settings": "minecraft:overworld",
         "biome_source": {
           "type": "minecraft:multi_noise",
@@ -16,7 +16,7 @@
       "type": "minecraft:the_nether",
       "generator": {
         "type": "pwa_dimensions:noise",
-	"structure_overrides": [],
+        "structure_overrides": [],
         "settings": "minecraft:nether",
         "biome_source": {
           "type": "minecraft:multi_noise",

@@ -4,8 +4,9 @@ This consists of a Fabric mod for Minecraft 1.21.1 as well as a companion datapa
 
 It adds
 - a resettable resource world and travel to and from it
-- control over nether portal destinations
 - infrastructure for instanced dungeons
+- control over nether portal destinations
+- a minecraft:noise-derived world generator that supports `structure_overrides`
 
 
 # The Resource World
@@ -24,7 +25,7 @@ Some config can be done via `/data` command on `storage pwa_dimensions:config`.
 - `resourceworld`: name of the resource world dimension. Defaults to "pwa_dimensions:rw".
 - `resourceworld_nether`: name of the resource world nether dimension. Defaults to "pwa_dimensions:rw_nether".
 
-TODO: config for spread?
+TODO: config for spreadplayers?
 
 Configuration about nether portals is also in `storage pwa_dimensions:config`:
 
@@ -56,9 +57,9 @@ The `/dungeon template` command has a few subcommands:
 
 - `/dungeon template create <new template name>`
 
-  TODO: generator args!
-
   Creates a new template edit and teleports the current player into it. Use `/dungeon template save_and_finish` when done.
+
+  Currently it always creates a minecraft:flat world.
 
 - `/dungeon template edit <existing template name>`
 
@@ -73,6 +74,9 @@ The `/dungeon template` command has a few subcommands:
   IMMEDIATELY and PERMANENTLY DELETES the template!
 
 ### Instances
+
+Instances are created from templates on demand. Players go there and when
+everyone has left, they are deleted again.
 
 - `/dungeon instance create <template name>`
 
@@ -156,9 +160,21 @@ Only players with the `pwa_dimensions_player` tag can use entrances and exits.
 
 - The marker entity tagged `pwa_dimensions_dungeon_exit` inside a dungeon template marks the dungeon's exit. Players that get close will be teleported to the exit_target.
 
+## World generator with structure override config
+
+There's a `pwa_dimensions:noise` generator that is exactly like `minecraft:noise`, but also supports the `structure_overrides` argument like `minecraft:flat` does. Example:
+
+```
+       "generator": {
+         "type": "pwa_dimensions:noise",
+         "structure_overrides": [],
+         "settings": "minecraft:overworld",
+         "biome_source": {
+```
+
 # Installation
 
-This is a Fabric mod for Minecraft v1.21.1. It doesn't work on other versions.
+This is a Fabric mod for Minecraft v1.21.1. It does not work with other versions.
 
 You need:
 - Minecraft v1.21.1 with Fabric installed
