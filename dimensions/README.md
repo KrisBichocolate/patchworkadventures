@@ -189,6 +189,28 @@ Recommended:
 
 See [releases](https://github.com/KrisBichocolate/patchworkadventures/releases) for download links.
 
+## Post-installation setup
+
+- Create your resource worlds
+
+```
+/mw create pwa_dimensions:rw pwa_dimensions:resource_world_preset overworld
+/mw create pwa_dimensions:rw_nether pwa_dimensions:resource_world_preset the_nether
+```
+
+- Set up your nether portal targets
+
+```
+/data modify storage pwa_dimensions:config worlds."pwa_dimensions:rw".nether_portal_target_world set value "pwa_dimensions:rw_nether"
+/data modify storage pwa_dimensions:config worlds."pwa_dimensions:rw_nether".nether_portal_target_world set value "pwa_dimensions:rw"
+```
+
+Maybe disable the overworld nether?
+
+```
+/data modify storage pwa_dimensions:config worlds."minecraft:overworld".nether_portal_target_world set value "disabled"
+```
+
 # Technical
 
 This mod depends on
