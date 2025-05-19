@@ -179,6 +179,7 @@ This is a Fabric mod for Minecraft v1.21.1. It does not work with other versions
 You need:
 - Minecraft v1.21.1 with Fabric installed
 - Fabric API mod
+- [Cardinal Components 6.1.2 for Fabric](https://modrinth.com/mod/cardinal-components-api)
 - [My custom version of the multiworld mod](https://github.com/KrisBichocolate/pwa-multiworld/)
 - The pwa_dimensions mod.
 - The pwa_dimensions datapack.
